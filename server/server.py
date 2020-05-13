@@ -1,3 +1,6 @@
+import sys
+sys.path += ['..']
+
 from netsim.netinterface import network_interface
 
 netif = network_interface("../netsim", 'A')		
