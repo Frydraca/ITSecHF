@@ -7,8 +7,7 @@ sys.path += ['..']
 from netsim.netinterface import network_interface
 
 def GetCredentials():
-    print('Enter your username:')
-    userName = input()
+    userName = input("Enter your username: ")
     userPassword = getpass.getpass()
     return userName, userPassword
 
@@ -31,8 +30,7 @@ print('Login')
 userNameLog, userPasswordLog = GetCredentials()
 
 while True:
-    print('input ">>"')
-    userInput = input().split()
+    userInput = input(">> ").split()
     if len(userInput) == 0:
         print("Error: No input was given.")
         continue
@@ -76,7 +74,6 @@ while True:
     else:
         print("Invalid command")
     
-print("done")
 
 # sent=netif.send_msg("A", b"alma")
 # print(sent)
