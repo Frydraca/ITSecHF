@@ -6,7 +6,7 @@ from getpass import getpass
 from Crypto.PublicKey import RSA
 from business_logic import BLL
 
-netif = network_interface("../netsim", 'A')
+netif = network_interface("../netsim/", 'A')
 password = getpass()
 private_key = RSA.import_key(open("enceypted_server_rsa_key.bin").read(), passphrase=password)
 bll = BLL()
