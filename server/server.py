@@ -6,11 +6,14 @@ from getpass import getpass
 from Crypto.PublicKey import RSA
 from business_logic import BLL
 
-netif = network_interface("../netsim/", 'A')
+address = 'A'
+netif = network_interface("../netsim/", address)
 password = getpass()
 private_key = RSA.import_key(open("enceypted_server_rsa_key.bin").read(), passphrase=password)
 bll = BLL()
 
+print()
+print("Lisstening on {}".format(address))
 print("Server is running press CTRL+C to stop it!")
 while True:	
     status, msg = netif.receive_msg(blocking=False)
