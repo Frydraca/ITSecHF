@@ -38,7 +38,6 @@ while True:
         byte_msg = cipher_aes.decrypt_and_verify(ciphertext, tag)
 
         result = bll.resolve_message(byte_msg)
-        print(modulus_len)
 
         netif.send_msg(sender.decode("utf-8"),result)
 

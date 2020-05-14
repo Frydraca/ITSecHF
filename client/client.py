@@ -34,40 +34,41 @@ for opt, arg in opts:
 print('Login')
 userNameLog, userPasswordLog = clientLogic.GetCredentials()
 
-for i in range(2000):
-    clientId = uuid.uuid1() 
-    clientLogic.GenerateRsaKeys()
-    clientLogic.GenerateSignKey()
+clientId = uuid.uuid1() 
+clientLogic.GenerateRsaKeys()
+clientLogic.GenerateSignKey()
+netif.send_msg("A", clientLogic.SendInitMessage(clientId))
 
-    netif.send_msg("A", clientLogic.SendInitMessage(clientId))
+############################# Test answer catch #############################
+status, incoming_byte_message = netif.receive_msg(blocking=True)
+f = io.BytesIO(incoming_byte_message)
+enc_session_key, nonce, tag, ciphertext = \
+    [ f.read(x) for x in (RSA.import_key(clientLogic.client_key_private).size_in_bytes(), 16, 16, -1) ]
 
-    ############################# Test answer catch #############################
-    status, incoming_byte_message = netif.receive_msg(blocking=True)
-    f = io.BytesIO(incoming_byte_message)
-    enc_session_key, nonce, tag, ciphertext = \
-        [ f.read(x) for x in (RSA.import_key(clientLogic.client_key_private).size_in_bytes(), 16, 16, -1) ]
+cipher_rsa = PKCS1_OAEP.new(RSA.import_key(clientLogic.client_key_private))
+session_key = cipher_rsa.decrypt(enc_session_key)
 
-    cipher_rsa = PKCS1_OAEP.new(RSA.import_key(clientLogic.client_key_private))
-    session_key = cipher_rsa.decrypt(enc_session_key)
+# Decrypt the data with the AES session key
+cipher_aes = AES.new(session_key, AES.MODE_EAX, nonce)
+byte_msg = cipher_aes.decrypt_and_verify(ciphertext, tag)
 
-    # Decrypt the data with the AES session key
-    cipher_aes = AES.new(session_key, AES.MODE_EAX, nonce)
-    byte_msg = cipher_aes.decrypt_and_verify(ciphertext, tag)
+f = io.BytesIO(byte_msg)
+signature, msg_data_bytes = \
+    [ f.read(x) for x in (64,-1) ]
 
-    msg = byte_msg.decode('utf-8')
-    msg_obj = json.loads(msg)
+server_curve_key = ECC.import_key(open('public_server_curve_key.pem').read())
+h = SHA256.new(msg_data_bytes)
+verifier = DSS.new(server_curve_key, 'fips-186-3')
 
-    server_curve_key = ECC.import_key(open('public_server_curve_key.pem').read())
-    h = SHA256.new(json.dumps(msg_obj["data"]).encode('utf-8'))
-    verifier = DSS.new(server_curve_key, 'fips-186-3')
+msg_obj = json.loads(msg_data_bytes.decode("utf-8"))
 
-    try:
-        verifier.verify(h, clientLogic.int_to_bytes(msg_obj["sign"]))
-        print("The message is authentic.")
-        print(json.dumps(msg_obj, indent=2))
-    except ValueError:
-        print("The message is not authentic.")
-    ############################# Test answer catch #############################
+try:
+    verifier.verify(h, signature)
+    print("The message is authentic.")
+    print(json.dumps(msg_obj, indent=2))
+except ValueError:
+    print("The message is not authentic.")
+############################# Test answer catch #############################
 
 while True:
     userInput = input(">> ").split()

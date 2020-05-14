@@ -16,10 +16,6 @@ class ClientLogic:
         self.server_cipher_rsa = PKCS1_OAEP.new(serverPublicKey)
 
 
-    def int_to_bytes(self, x: int) -> bytes:
-        return x.to_bytes((x.bit_length() + 7) // 8, 'big')
-
-
     def GetCredentials(self):
         userName = input("Enter your username: ")
         userPassword = getpass.getpass()
@@ -66,5 +62,5 @@ class ClientLogic:
                            encodedMessage
         
 
-        print('sent init! message length: {} encodedSessionKey length:{}'.format(len(initMessageBytes),len(encodedSessionKey)))
+        print('sent init! message length: {}'.format(len(initMessageBytes)))
         return initMessageBytes

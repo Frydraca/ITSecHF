@@ -23,20 +23,11 @@ class BLL:
                "pub_curve_key" in msg_obj["data"].keys()
 
 
-    def int_to_bytes(self, x: int) -> bytes:
-        return x.to_bytes((x.bit_length() + 7) // 8, 'big')
-
-
     def encode_message(self, message, client_id) -> bytes:
         hashed_message = SHA256.new(json.dumps(message).encode('utf-8'))
         signature = self.signer.sign(hashed_message)
 
-        messageToEncode = {
-            "data": message,
-            "sign": int.from_bytes(signature, 'big')
-        }
-
-        messageToEncodeBytes = json.dumps(messageToEncode).encode("utf-8")
+        messageToEncodeBytes = signature + json.dumps(message).encode("utf-8")
 
         session_key = get_random_bytes(16)
         clientPublicKey = RSA.import_key(self.session_store[client_id].clientPubKey)
@@ -71,7 +62,9 @@ class BLL:
 
                     self.session_store.update({msg_obj["client_id"] : newSession})
                     print()
-                    print("Session store updated: {}".format(len(self.session_store.keys())))
-                    return self.encode_message("ack", newSession.clientId)
-        
-        print("Bad Message")
+                    print("Sessions stored: {}".format(len(self.session_store.keys())))
+                    return self.encode_message({"response": "ack"}, newSession.clientId)
+                #Error handling
+                return self.encode_message({"response": "Server side error"}, msg_obj["client_id"])
+
+        return b"Fundamentaly Bad Message!"
