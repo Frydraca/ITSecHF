@@ -42,6 +42,8 @@ netif.send_msg("A", clientLogic.SendLogInMessage())
 clientLogic.ResolveServerMessage(netif)
 
 while True:
+    netif.send_msg("A", clientLogic.SendGetWorkingDirectoryMessage())
+    clientLogic.ResolveServerMessage(netif)
     userInput = input(">> ").split()
     if len(userInput) == 0:
         print("Error: No input was given.")
@@ -49,40 +51,56 @@ while True:
 
     if userInput[0] == 'exit':
         print('Logging out')
+        netif.send_msg("A", clientLogic.SendExitMessage())
+        clientLogic.ResolveServerMessage(netif)
         break
     elif userInput[0] == 'mkdir':
         if len(userInput) < 2:
             print('Error: Directory name was not provided')
         else:
             print('Creating a new directory: ' + userInput[1])
+            netif.send_msg("A", clientLogic.SendCreateDirectoryMessage())
+            clientLogic.ResolveServerMessage(netif)
     elif userInput[0] == 'rmd':
         if len(userInput) < 2:
             print('Error: Directory name was not provided')
         else:
             print('Deleting directory: ' + userInput[1])
+            netif.send_msg("A", clientLogic.SendRemoveDirectoryMessage())
+            clientLogic.ResolveServerMessage(netif)
     elif userInput[0] == 'cd':
         if len(userInput) < 2:
             print('Error: Path was not provided')
         else:
             print('Changing directory to: ' + userInput[1])
+            netif.send_msg("A", clientLogic.SendChangeDirectoryMessage())
+            clientLogic.ResolveServerMessage(netif)
     elif userInput[0] == 'ls':
         print("Listing contents in the directory")
+        netif.send_msg("A", clientLogic.SendListFilesMessage())
+        clientLogic.ResolveServerMessage(netif)
     elif userInput[0] == 'upl':
         if len(userInput) < 2:
             print('Error: Path was not provided')
         else:
             print("Uploading file: " + userInput[1])
+            netif.send_msg("A", clientLogic.SendUploadFileMessage())
+            clientLogic.ResolveServerMessage(netif)
     elif userInput [0] == 'dnl':
         if len(userInput) < 3:
             print('Error: File name or path was not provided')
         else:
             print('Downloading file: ' + userInput[1] 
             + " to directory: " + userInput[2])
+            netif.send_msg("A", clientLogic.SendDownloadFileMessage())
+            clientLogic.ResolveServerMessage(netif)
     elif userInput[0] == 'rmf':
         if len(userInput) < 2:
             print('Error: File name was not provided')
         else:
-            print('Deleting file: ' + userInput[1])  
+            print('Deleting file: ' + userInput[1])
+            netif.send_msg("A", clientLogic.SendRemoveFileMessage())
+            clientLogic.ResolveServerMessage(netif)
     else:
         print("Invalid command")
     

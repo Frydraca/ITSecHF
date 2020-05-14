@@ -93,6 +93,17 @@ class ClientLogic:
         self.VerifyServerSignature(signature, msg_data_bytes)
 
 
+    def CreateMessage(self, messageData):
+        messageToEncode = {
+            "client_id": self.clientId.int,
+            "data": messageData 
+        }
+        messageToEncodeBytes = json.dumps(messageToEncode).encode("utf-8")
+        messageWithSign = self.SignMessage(messageToEncodeBytes) + messageToEncodeBytes
+
+        return self.EncodeMessageWithAes(messageWithSign)
+
+
     def SendInitMessage(self) -> bytes:
         messageData = {
             "type": "INI",
@@ -107,11 +118,10 @@ class ClientLogic:
         messageToEncodeBytes = json.dumps(messageToEncode).encode("utf-8")
         messageWithSign = get_random_bytes(64) + messageToEncodeBytes
 
-        initMessageBytes = self.EncodeMessageWithAes(messageWithSign)
-        
+        messageBytes = self.EncodeMessageWithAes(messageWithSign)
 
-        print('sent init! message length: {}'.format(len(initMessageBytes)))
-        return initMessageBytes
+        print('sent init.')
+        return messageBytes
 
 
     def SendLogInMessage(self):
@@ -120,19 +130,11 @@ class ClientLogic:
             "username": self.userName,
             "password": self.userPassword
         }
-        messageToEncode = {
-            "client_id": self.clientId.int,
-            "data": messageData
-        }
 
-        messageToEncodeBytes = json.dumps(messageToEncode).encode("utf-8")
-        messageWithSign = self.SignMessage(messageToEncodeBytes) + messageToEncodeBytes
+        messageBytes = self.CreateMessage(messageData)
 
-        loginMessageBytes = self.EncodeMessageWithAes(messageWithSign)
-        
-
-        print('sent login! message length: {}'.format(len(loginMessageBytes)))
-        return loginMessageBytes
+        print('sent login.')
+        return messageBytes
 
 
     def SendRegistrationMessage(self):
@@ -141,19 +143,75 @@ class ClientLogic:
             "username": self.userName,
             "password": self.userPassword
         }
-        messageToEncode = {
-            "client_id": self.clientId.int,
-            "data": messageData
-        }
 
-        messageToEncodeBytes = json.dumps(messageToEncode).encode("utf-8")
-        messageWithSign = self.SignMessage(messageToEncodeBytes) + messageToEncodeBytes
-
-        loginMessageBytes = self.EncodeMessageWithAes(messageWithSign)
+        messageBytes = self.CreateMessage(messageData)
         
+        print('sent registration.')
+        return messageBytes
 
-        print('sent login! message length: {}'.format(len(loginMessageBytes)))
-        return loginMessageBytes
+
+    def SendExitMessage(self):
+        messageData = {
+            "type": "EXT"
+        }
+        return self.CreateMessage(messageData)
+    
+
+    def SendCreateDirectoryMessage(self):
+        messageData = {
+            "type": "MKD"
+        }
+        return self.CreateMessage(messageData)
+
+    
+    def SendRemoveDirectoryMessage(self):
+        messageData = {
+            "type": "RMD"
+        }
+        return self.CreateMessage(messageData)
+
+
+    def SendChangeDirectoryMessage(self):
+        messageData = {
+            "type": "CWD"
+        }
+        return self.CreateMessage(messageData)
+
+    
+    def SendUploadFileMessage(self):
+        messageData = {
+            "type": "UPL"
+        }
+        return self.CreateMessage(messageData)
+        
+    
+    def SendDownloadFileMessage(self):
+        messageData = {
+            "type": "DNL"
+        }
+        return self.CreateMessage(messageData)
+        
+    
+    def SendListFilesMessage(self):
+        messageData = {
+            "type": "LST"
+        }
+        return self.CreateMessage(messageData)
+           
+    
+    def SendRemoveFileMessage(self):
+        messageData = {
+            "type": "RMF"
+        }
+        return self.CreateMessage(messageData)
+
+    
+    def SendGetWorkingDirectoryMessage(self):
+        messageData = {
+            "type": "GWD"
+        }
+        return self.CreateMessage(messageData)
+    
 
 
 
