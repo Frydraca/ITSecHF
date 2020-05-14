@@ -57,16 +57,13 @@ class ClientLogic:
 
         cipher_aes = AES.new(session_key, AES.MODE_EAX)
         encodedMessage, tag = cipher_aes.encrypt_and_digest(messageToEncodeBytes)
+        
+        initMessageBytes = self.address.encode("utf-8") + \
+                           encodedSessionKey + \
+                           cipher_aes.nonce + \
+                           tag + \
+                           encodedMessage
+        
 
-        initMessage = {
-            "sender": self.address,
-            "enc_session_key": int.from_bytes(encodedSessionKey, 'big'),
-            "tag": int.from_bytes(tag, 'big'),
-            "nonce": int.from_bytes(cipher_aes.nonce, 'big'),
-            "ciphertext": int.from_bytes(encodedMessage, 'big')
-        }
-
-        initMessageBytes = json.dumps(initMessage).encode("utf-8")
-
-        print('sent init for {}'.format(clientId.int))
+        print('sent init! message length: {} encodedSessionKey length:{}'.format(len(initMessageBytes),len(encodedSessionKey)))
         return initMessageBytes

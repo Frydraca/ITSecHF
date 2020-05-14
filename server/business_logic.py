@@ -13,11 +13,14 @@ class BLL:
 
 
     def basic_validate_message(self, msg_obj: dict) -> bool:
-        return "client_id" in msg_obj.keys() and "data" in msg_obj.keys() and "type" in msg_obj["data"].keys()
+        return "client_id" in msg_obj.keys() and "data" in msg_obj.keys() and \
+               "type" in msg_obj["data"].keys()
 
 
     def validate_ini(self, msg_obj: dict) -> bool:
-        return msg_obj["client_id"] not in self.session_store.keys() and "pub_key" in msg_obj["data"].keys() and "pub_curve_key" in msg_obj["data"].keys()
+        return msg_obj["client_id"] not in self.session_store.keys() and \
+               "pub_key" in msg_obj["data"].keys() and \
+               "pub_curve_key" in msg_obj["data"].keys()
 
 
     def int_to_bytes(self, x: int) -> bytes:
@@ -43,14 +46,12 @@ class BLL:
         cipher_aes = AES.new(session_key, AES.MODE_EAX)
         encodedMessage, tag = cipher_aes.encrypt_and_digest(messageToEncodeBytes)
 
-        resultMessage = {
-            "enc_session_key": int.from_bytes(encodedSessionKey, 'big'),
-            "tag": int.from_bytes(tag, 'big'),
-            "nonce": int.from_bytes(cipher_aes.nonce, 'big'),
-            "ciphertext": int.from_bytes(encodedMessage, 'big')
-        }
+        resultMessage = encodedSessionKey + \
+                        cipher_aes.nonce + \
+                        tag + \
+                        encodedMessage
 
-        return json.dumps(resultMessage).encode("utf-8")
+        return resultMessage
 
 
     def resolve_message(self, byte_msg: bytes) -> bytes:
@@ -70,8 +71,7 @@ class BLL:
 
                     self.session_store.update({msg_obj["client_id"] : newSession})
                     print()
-                    print("Session store updated:")
-                    print(json.dumps(list(self.session_store.keys()), indent=2))
+                    print("Session store updated: {}".format(len(self.session_store.keys())))
                     return self.encode_message("ack", newSession.clientId)
         
         print("Bad Message")
