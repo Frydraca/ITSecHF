@@ -6,18 +6,27 @@ from Crypto.Cipher import AES, PKCS1_OAEP
 from Crypto.PublicKey import RSA, ECC
 from Crypto.Signature import DSS
 from Crypto.Protocol.KDF import PBKDF2
+from datetime import datetime
+import os
 
 class BLL:
 
     def __init__(self, signer, password):
         self.signer = signer
         self.session_store = dict()
+        self.logged_in_session = None
+
         self.password = password
         self.users = dict()
         self.decrypt_users()
         print()
         print("Users: ")
         print(json.dumps(list(self.users.keys()), indent=2))
+
+
+    def create_timestamp(self):
+        now = datetime.now()
+        return datetime.timestamp(now)
 
 
     def encrypt_users(self):
@@ -34,15 +43,18 @@ class BLL:
 
 
     def decrypt_users(self):
-        file_in = open("users.bin", "rb")
+        try:
+            file_in = open("users.bin", "rb")
+            
+            salt, nonce, tag, ciphertext = \
+                [ file_in.read(x) for x in (16, 16, 16, -1) ]
+            key = PBKDF2(self.password, salt, 16, count=10000, hmac_hash_module=SHA256)
 
-        salt, nonce, tag, ciphertext = \
-            [ file_in.read(x) for x in (16, 16, 16, -1) ]
-        key = PBKDF2(self.password, salt, 16, count=10000, hmac_hash_module=SHA256)
-
-        cipher_aes = AES.new(key, AES.MODE_EAX, nonce)
-        users = cipher_aes.decrypt_and_verify(ciphertext, tag)
-        self.users = json.loads(users.decode("utf-8"))
+            cipher_aes = AES.new(key, AES.MODE_EAX, nonce)
+            users = cipher_aes.decrypt_and_verify(ciphertext, tag)
+            self.users = json.loads(users.decode("utf-8"))
+        except FileNotFoundError:
+            self.encrypt_users()
 
 
     def basic_validate_message(self, msg_obj: dict) -> bool:
@@ -86,6 +98,10 @@ class BLL:
                "password" in msg_obj["data"].keys()
 
 
+    def validate_command(self, msg_obj: dict) -> bool:
+        return self.logged_in_session == msg_obj["client_id"]
+
+
     def validate_signature(self, client_id: str, byte_msg: bytes, signature: bytes) -> bool:
         client_curve_key = ECC.import_key(self.session_store[client_id].clientCurvePubKey)
         h = SHA256.new(byte_msg)
@@ -122,8 +138,16 @@ class BLL:
                             response = self.encode_message({"response": "Cannot create user!"}, msg_obj["client_id"])
                             del self.session_store[msg_obj["client_id"]]
                             return response
+
                     elif msg_obj["data"]["type"] == "LIN":
-                        return self.encode_message({"response": "NOT IMPLEMENTED!"}, msg_obj["client_id"])
+                        if self.validate_user(msg_obj) and \
+                                msg_obj["data"]["username"] in self.users.keys() and \
+                                self.logged_in_session == None:
+                            return self.LIN(msg_obj)
+                        else:
+                            return self.encode_message({"timestamp": self.create_timestamp(), \
+                                        "response": "Failed login!"}, msg_obj["client_id"])
+                            
                     elif msg_obj["data"]["type"] == "MKD":
                         return self.encode_message({"response": "NOT IMPLEMENTED!"}, msg_obj["client_id"])
                     elif msg_obj["data"]["type"] == "RMD":
@@ -137,11 +161,13 @@ class BLL:
                     elif msg_obj["data"]["type"] == "LST":
                         return self.encode_message({"response": "NOT IMPLEMENTED!"}, msg_obj["client_id"])
                     elif msg_obj["data"]["type"] == "RMF":
-                        return self.encode_message({"response": "NOT IMPLEMENTED!"}, msg_obj["client_id"])
+                        if self.validate_command(msg_obj):
+                            return self.GWD(msg_obj)
                     elif msg_obj["data"]["type"] == "GWD":
                         return self.encode_message({"response": "NOT IMPLEMENTED!"}, msg_obj["client_id"])
                     elif msg_obj["data"]["type"] == "EXT":
-                        return self.encode_message({"response": "NOT IMPLEMENTED!"}, msg_obj["client_id"])
+                        if self.validate_command(msg_obj):
+                            return self.EXT(msg_obj)
                 
 
             if msg_obj["client_id"] in self.session_store.keys():
@@ -172,4 +198,51 @@ class BLL:
         self.users.update({msg_obj["data"]["username"] : hashed_password})
         self.encrypt_users()
 
+        os.makedirs("users/{}".format(msg_obj["data"]["username"]))
         return self.encode_message({"response": "User successfully created!"}, msg_obj["client_id"])
+
+
+    def LIN(self, msg_obj: dict) -> bytes:
+        h_obj = SHA3_256.new()
+        h_obj.update(msg_obj["data"]["password"].encode("utf-8"))
+        hashed_password = h_obj.hexdigest()
+
+        if self.users[msg_obj["data"]["username"]] == hashed_password:
+            self.session_store[msg_obj["client_id"]].user = msg_obj["data"]["username"]
+            self.session_store[msg_obj["client_id"]].password = msg_obj["data"]["password"]
+            self.logged_in_session = msg_obj["client_id"]
+
+            return self.encode_message({"timestamp": self.create_timestamp(), \
+                                        "response": "Successfull login!"}, msg_obj["client_id"])
+        else:
+            return self.encode_message({"timestamp": self.create_timestamp(), \
+                                        "response": "Failed login!"}, msg_obj["client_id"])
+
+
+    def GWD(self, msg_obj: dict) -> bytes:
+        if os.path.isdir("./users/{}".format(msg_obj["data"]["username"])):
+            self.session_store[self.logged_in_session].path = msg_obj["data"]["username"]
+            return self.encode_message({"type": msg_obj["data"]["type"], \
+                                        "seq_id": 1,\
+                                        "timestamp": self.create_timestamp(), \
+                                        "response": self.session_store[self.logged_in_session].path}, \
+                                        msg_obj["client_id"])
+        else:
+            self.EXT(msg_obj)
+            return self.encode_message({"type": msg_obj["data"]["type"], \
+                                        "seq_id": 1,\
+                                        "timestamp": self.create_timestamp(), \
+                                        "response": { "error" : "No directory for the user!"}
+                                        }, \
+                                        msg_obj["client_id"])
+
+
+    def EXT(self, msg_obj: dict) -> bytes:
+        del self.session_store[self.logged_in_session]
+        self.logged_in_session = ''
+        return self.encode_message({"type": msg_obj["data"]["type"], \
+                                        "seq_id": 1,\
+                                        "timestamp": self.create_timestamp(), \
+                                        "response": "Logged out!"
+                                        }, \
+                                        msg_obj["client_id"])

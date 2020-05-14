@@ -5,3 +5,4 @@ class Session:
         self.clientCurvePubKey = ""
         self.user = ""
         self.password = ""
+        self.path = ""
