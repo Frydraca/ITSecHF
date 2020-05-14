@@ -161,10 +161,10 @@ class BLL:
                     elif msg_obj["data"]["type"] == "LST":
                         return self.encode_message({"response": "NOT IMPLEMENTED!"}, msg_obj["client_id"])
                     elif msg_obj["data"]["type"] == "RMF":
+                        return self.encode_message({"response": "NOT IMPLEMENTED!"}, msg_obj["client_id"])
+                    elif msg_obj["data"]["type"] == "GWD":
                         if self.validate_command(msg_obj):
                             return self.GWD(msg_obj)
-                    elif msg_obj["data"]["type"] == "GWD":
-                        return self.encode_message({"response": "NOT IMPLEMENTED!"}, msg_obj["client_id"])
                     elif msg_obj["data"]["type"] == "EXT":
                         if self.validate_command(msg_obj):
                             return self.EXT(msg_obj)
@@ -220,8 +220,8 @@ class BLL:
 
 
     def GWD(self, msg_obj: dict) -> bytes:
-        if os.path.isdir("./users/{}".format(msg_obj["data"]["username"])):
-            self.session_store[self.logged_in_session].path = msg_obj["data"]["username"]
+        if os.path.isdir("./users/{}".format(self.session_store[self.logged_in_session].user)):
+            self.session_store[self.logged_in_session].path = "/"
             return self.encode_message({"type": msg_obj["data"]["type"], \
                                         "seq_id": 1,\
                                         "timestamp": self.create_timestamp(), \
@@ -238,11 +238,12 @@ class BLL:
 
 
     def EXT(self, msg_obj: dict) -> bytes:
-        del self.session_store[self.logged_in_session]
-        self.logged_in_session = ''
-        return self.encode_message({"type": msg_obj["data"]["type"], \
+        response = self.encode_message({"type": msg_obj["data"]["type"], \
                                         "seq_id": 1,\
                                         "timestamp": self.create_timestamp(), \
                                         "response": "Logged out!"
                                         }, \
                                         msg_obj["client_id"])
+        del self.session_store[self.logged_in_session]
+        self.logged_in_session = ''
+        return response
