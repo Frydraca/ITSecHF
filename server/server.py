@@ -29,15 +29,19 @@ while True:
     status, incoming_byte_message = netif.receive_msg(blocking=False)
     if status:        
         f = io.BytesIO(incoming_byte_message)
-        sender, enc_session_key, nonce, tag, ciphertext = \
+        sender, enc_message_key, nonce, tag, ciphertext = \
             [ f.read(x) for x in (1 ,modulus_len, 16, 16, -1) ]
 
-        session_key = cipher_rsa.decrypt(enc_session_key)
+        message_key = cipher_rsa.decrypt(enc_message_key)
 
-        cipher_aes = AES.new(session_key, AES.MODE_EAX, nonce)
+        cipher_aes = AES.new(message_key, AES.MODE_EAX, nonce)
         byte_msg = cipher_aes.decrypt_and_verify(ciphertext, tag)
 
-        result = bll.resolve_message(byte_msg)
+        f = io.BytesIO(byte_msg)
+        signature, byte_message_data = \
+            [ f.read(x) for x in (64, -1) ]
+
+        result = bll.resolve_message(byte_message_data, signature)
 
         netif.send_msg(sender.decode("utf-8"),result)
 

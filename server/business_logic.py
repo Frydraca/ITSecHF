@@ -3,7 +3,8 @@ from Crypto.Hash import SHA256
 from session import Session
 from Crypto.Random import get_random_bytes
 from Crypto.Cipher import AES, PKCS1_OAEP
-from Crypto.PublicKey import RSA
+from Crypto.PublicKey import RSA, ECC
+from Crypto.Signature import DSS
 
 class BLL:
 
@@ -32,15 +33,15 @@ class BLL:
         messageToEncodeBytes = signature + json.dumps(message).encode("utf-8")
 
         # Encrypt
-        session_key = get_random_bytes(16)
+        message_key = get_random_bytes(16)
         clientPublicKey = RSA.import_key(self.session_store[client_id].clientPubKey)
 
         cipher_rsa = PKCS1_OAEP.new(clientPublicKey)
-        encodedSessionKey = cipher_rsa.encrypt(session_key)
-        cipher_aes = AES.new(session_key, AES.MODE_EAX)
+        encodedMessageKey = cipher_rsa.encrypt(message_key)
+        cipher_aes = AES.new(message_key, AES.MODE_EAX)
         encodedMessage, tag = cipher_aes.encrypt_and_digest(messageToEncodeBytes)
 
-        resultMessage = encodedSessionKey + \
+        resultMessage = encodedMessageKey + \
                         cipher_aes.nonce + \
                         tag + \
                         encodedMessage
@@ -48,7 +49,19 @@ class BLL:
         return resultMessage
 
 
-    def resolve_message(self, byte_msg: bytes) -> bytes:
+    def validate_signature(self, client_id: str, byte_msg: bytes, signature: bytes) -> bool:
+        client_curve_key = ECC.import_key(self.session_store[client_id])
+        h = SHA256.new(byte_msg)
+        verifier = DSS.new(client_curve_key, 'fips-186-3')
+
+        try:
+            verifier.verify(h, signature)
+            return True
+        except ValueError:
+            return False
+
+
+    def resolve_message(self, byte_msg: bytes, signature: bytes) -> bytes:
         msg = byte_msg.decode('utf-8')
         msg_obj = json.loads(msg)
         if self.basic_validate_message(msg_obj):
@@ -58,16 +71,49 @@ class BLL:
 
             if msg_obj["data"]["type"] == "INI":
                 if self.validate_ini(msg_obj):
-                    newSession = Session()
-                    newSession.clientId = msg_obj["client_id"]
-                    newSession.clientPubKey = msg_obj["data"]["pub_key"]
-                    newSession.clientCurvePubKey = msg_obj["data"]["pub_curve_key"]
+                    return self.INI(msg_obj)
 
-                    self.session_store.update({msg_obj["client_id"] : newSession})
-                    print()
-                    print("Sessions stored: {}".format(len(self.session_store.keys())))
-                    return self.encode_message({"response": "ack"}, newSession.clientId)
+            elif "client_id" in msg_obj.keys() and \
+                 self.validate_signature(msg_obj["client_id"], byte_msg, signature): 
+                    if msg_obj["data"]["type"] == "REG":
+                        return self.encode_message({"response": "NOT IMPLEMENTED!"}, msg_obj["client_id"])
+                    elif msg_obj["data"]["type"] == "LIN":
+                        return self.encode_message({"response": "NOT IMPLEMENTED!"}, msg_obj["client_id"])
+                    elif msg_obj["data"]["type"] == "MKD":
+                        return self.encode_message({"response": "NOT IMPLEMENTED!"}, msg_obj["client_id"])
+                    elif msg_obj["data"]["type"] == "RMD":
+                        return self.encode_message({"response": "NOT IMPLEMENTED!"}, msg_obj["client_id"])
+                    elif msg_obj["data"]["type"] == "CWD":
+                        return self.encode_message({"response": "NOT IMPLEMENTED!"}, msg_obj["client_id"])
+                    elif msg_obj["data"]["type"] == "UPL":
+                        return self.encode_message({"response": "NOT IMPLEMENTED!"}, msg_obj["client_id"])
+                    elif msg_obj["data"]["type"] == "DNL":
+                        return self.encode_message({"response": "NOT IMPLEMENTED!"}, msg_obj["client_id"])
+                    elif msg_obj["data"]["type"] == "LST":
+                        return self.encode_message({"response": "NOT IMPLEMENTED!"}, msg_obj["client_id"])
+                    elif msg_obj["data"]["type"] == "RMF":
+                        return self.encode_message({"response": "NOT IMPLEMENTED!"}, msg_obj["client_id"])
+                    elif msg_obj["data"]["type"] == "GWD":
+                        return self.encode_message({"response": "NOT IMPLEMENTED!"}, msg_obj["client_id"])
+                    elif msg_obj["data"]["type"] == "EXT":
+                        return self.encode_message({"response": "NOT IMPLEMENTED!"}, msg_obj["client_id"])
+                
+
+            if msg_obj["client_id"] in self.session_store.keys():
                 #Error handling
                 return self.encode_message({"response": "Server side error"}, msg_obj["client_id"])
+            
 
         return b"Fundamentaly Bad Message!"
+
+
+    def INI(self, msg_obj):
+        newSession = Session()
+        newSession.clientId = msg_obj["client_id"]
+        newSession.clientPubKey = msg_obj["data"]["pub_key"]
+        newSession.clientCurvePubKey = msg_obj["data"]["pub_curve_key"]
+
+        self.session_store.update({msg_obj["client_id"] : newSession})
+        print()
+        print("Sessions stored: {}".format(len(self.session_store.keys())))
+        return self.encode_message({"response": "ack"}, newSession.clientId)

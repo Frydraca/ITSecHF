@@ -46,7 +46,7 @@ class ClientLogic:
             "data": messageData
         }
 
-        messageToEncodeBytes = json.dumps(messageToEncode).encode("utf-8")
+        messageToEncodeBytes = get_random_bytes(64) + json.dumps(messageToEncode).encode("utf-8")
 
         session_key = get_random_bytes(16)
         
