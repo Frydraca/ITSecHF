@@ -50,7 +50,7 @@ class BLL:
 
 
     def validate_signature(self, client_id: str, byte_msg: bytes, signature: bytes) -> bool:
-        client_curve_key = ECC.import_key(self.session_store[client_id])
+        client_curve_key = ECC.import_key(self.session_store[client_id].clientCurvePubKey)
         h = SHA256.new(byte_msg)
         verifier = DSS.new(client_curve_key, 'fips-186-3')
 
