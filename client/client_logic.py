@@ -12,6 +12,9 @@ class ClientLogic:
         self.client_curve_key_private = ''
         self.address = address
 
+        serverPublicKey = RSA.import_key(open("public_server_rsa_key.pem").read())
+        self.server_cipher_rsa = PKCS1_OAEP.new(serverPublicKey)
+
 
     def int_to_bytes(self, x: int) -> bytes:
         return x.to_bytes((x.bit_length() + 7) // 8, 'big')
@@ -49,11 +52,9 @@ class ClientLogic:
 
         messageToEncodeBytes = json.dumps(messageToEncode).encode("utf-8")
 
-        serverPublicKey = RSA.import_key(open("public_server_rsa_key.pem").read())
         session_key = get_random_bytes(16)
         
-        cipher_rsa = PKCS1_OAEP.new(serverPublicKey)
-        encodedSessionKey = cipher_rsa.encrypt(session_key)
+        encodedSessionKey = self.server_cipher_rsa.encrypt(session_key)
 
         cipher_aes = AES.new(session_key, AES.MODE_EAX)
         encodedMessage, tag = cipher_aes.encrypt_and_digest(messageToEncodeBytes)

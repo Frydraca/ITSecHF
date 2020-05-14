@@ -15,6 +15,7 @@ netif = network_interface("../netsim/", address)
 password = getpass()
 private_key = RSA.import_key(open("enceypted_server_rsa_key.bin").read(), \
                 passphrase=password)
+modulus_len = private_key.size_in_bytes()
 cipher_rsa = PKCS1_OAEP.new(private_key)
 curve_key = ECC.import_key(open('encrypted_server_curve_key.bin').read(), \
                 passphrase=password)
@@ -28,7 +29,6 @@ while True:
     status, incoming_byte_message = netif.receive_msg(blocking=False)
     if status:        
         f = io.BytesIO(incoming_byte_message)
-        modulus_len = private_key.size_in_bytes()
         sender, enc_session_key, nonce, tag, ciphertext = \
             [ f.read(x) for x in (1 ,modulus_len, 16, 16, -1) ]
 
