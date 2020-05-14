@@ -20,7 +20,7 @@ cipher_rsa = PKCS1_OAEP.new(private_key)
 curve_key = ECC.import_key(open('encrypted_server_curve_key.bin').read(), \
                 passphrase=password)
 signer = DSS.new(curve_key, 'fips-186-3')
-bll = BLL(signer)
+bll = BLL(signer, password)
 
 print()
 print("Listening on {}".format(address))

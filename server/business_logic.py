@@ -1,16 +1,48 @@
 import json
-from Crypto.Hash import SHA256
+from Crypto.Hash import SHA256, SHA3_256
 from session import Session
 from Crypto.Random import get_random_bytes
 from Crypto.Cipher import AES, PKCS1_OAEP
 from Crypto.PublicKey import RSA, ECC
 from Crypto.Signature import DSS
+from Crypto.Protocol.KDF import PBKDF2
 
 class BLL:
 
-    def __init__(self, signer):
+    def __init__(self, signer, password):
         self.signer = signer
         self.session_store = dict()
+        self.password = password
+        self.users = dict()
+        self.decrypt_users()
+        print()
+        print("Users: ")
+        print(json.dumps(list(self.users.keys()), indent=2))
+
+
+    def encrypt_users(self):
+        data = json.dumps(self.users).encode('utf-8')
+        file_out = open("users.bin", "wb")
+
+        salt = get_random_bytes(16)
+        key = PBKDF2(self.password, salt, 16, count=10000, hmac_hash_module=SHA256)
+
+        cipher_aes = AES.new(key, AES.MODE_EAX)
+        ciphertext, tag = cipher_aes.encrypt_and_digest(data)
+        [ file_out.write(x) for x in (salt, cipher_aes.nonce, tag, ciphertext) ]
+        file_out.close()
+
+
+    def decrypt_users(self):
+        file_in = open("users.bin", "rb")
+
+        salt, nonce, tag, ciphertext = \
+            [ file_in.read(x) for x in (16, 16, 16, -1) ]
+        key = PBKDF2(self.password, salt, 16, count=10000, hmac_hash_module=SHA256)
+
+        cipher_aes = AES.new(key, AES.MODE_EAX, nonce)
+        users = cipher_aes.decrypt_and_verify(ciphertext, tag)
+        self.users = json.loads(users.decode("utf-8"))
 
 
     def basic_validate_message(self, msg_obj: dict) -> bool:
@@ -49,6 +81,11 @@ class BLL:
         return resultMessage
 
 
+    def validate_user(self, msg_obj: dict) -> bool:
+        return "username" in msg_obj["data"].keys() and \
+               "password" in msg_obj["data"].keys()
+
+
     def validate_signature(self, client_id: str, byte_msg: bytes, signature: bytes) -> bool:
         client_curve_key = ECC.import_key(self.session_store[client_id].clientCurvePubKey)
         h = SHA256.new(byte_msg)
@@ -74,9 +111,17 @@ class BLL:
                     return self.INI(msg_obj)
 
             elif "client_id" in msg_obj.keys() and \
+                 msg_obj["client_id"] in self.session_store.keys() and \
                  self.validate_signature(msg_obj["client_id"], byte_msg, signature): 
                     if msg_obj["data"]["type"] == "REG":
-                        return self.encode_message({"response": "NOT IMPLEMENTED!"}, msg_obj["client_id"])
+                        if self.validate_user(msg_obj) and msg_obj["data"]["username"] not in self.users.keys():
+                            response = self.REG(msg_obj)
+                            del self.session_store[msg_obj["client_id"]] 
+                            return response
+                        else:
+                            response = self.encode_message({"response": "Cannot create user!"}, msg_obj["client_id"])
+                            del self.session_store[msg_obj["client_id"]]
+                            return response
                     elif msg_obj["data"]["type"] == "LIN":
                         return self.encode_message({"response": "NOT IMPLEMENTED!"}, msg_obj["client_id"])
                     elif msg_obj["data"]["type"] == "MKD":
@@ -107,7 +152,7 @@ class BLL:
         return b"Fundamentaly Bad Message!"
 
 
-    def INI(self, msg_obj):
+    def INI(self, msg_obj: dict) -> bytes:
         newSession = Session()
         newSession.clientId = msg_obj["client_id"]
         newSession.clientPubKey = msg_obj["data"]["pub_key"]
@@ -117,3 +162,14 @@ class BLL:
         print()
         print("Sessions stored: {}".format(len(self.session_store.keys())))
         return self.encode_message({"response": "ack"}, newSession.clientId)
+
+
+    def REG(self, msg_obj: dict) -> bytes:
+        h_obj = SHA3_256.new()
+        h_obj.update(msg_obj["data"]["password"].encode("utf-8"))
+        hashed_password = h_obj.hexdigest()
+        
+        self.users.update({msg_obj["data"]["username"] : hashed_password})
+        self.encrypt_users()
+
+        return self.encode_message({"response": "User successfully created!"}, msg_obj["client_id"])
