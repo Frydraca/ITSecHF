@@ -13,7 +13,7 @@ from business_logic import BLL
 address = 'A'
 netif = network_interface("../netsim/", address)
 password = getpass()
-private_key = RSA.import_key(open("enceypted_server_rsa_key.bin").read(), \
+private_key = RSA.import_key(open("encrypted_server_rsa_key.bin").read(), \
                 passphrase=password)
 modulus_len = private_key.size_in_bytes()
 cipher_rsa = PKCS1_OAEP.new(private_key)
@@ -23,7 +23,7 @@ signer = DSS.new(curve_key, 'fips-186-3')
 bll = BLL(signer)
 
 print()
-print("Lisstening on {}".format(address))
+print("Listening on {}".format(address))
 print("Server is running press CTRL+C to stop it!")
 while True:	
     status, incoming_byte_message = netif.receive_msg(blocking=False)

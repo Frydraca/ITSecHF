@@ -13,7 +13,8 @@ class BLL:
 
 
     def basic_validate_message(self, msg_obj: dict) -> bool:
-        return "client_id" in msg_obj.keys() and "data" in msg_obj.keys() and \
+        return "client_id" in msg_obj.keys() and \
+               "data" in msg_obj.keys() and \
                "type" in msg_obj["data"].keys()
 
 
@@ -24,11 +25,13 @@ class BLL:
 
 
     def encode_message(self, message, client_id) -> bytes:
+        # Signing 
         hashed_message = SHA256.new(json.dumps(message).encode('utf-8'))
         signature = self.signer.sign(hashed_message)
 
         messageToEncodeBytes = signature + json.dumps(message).encode("utf-8")
 
+        # Encrypt
         session_key = get_random_bytes(16)
         clientPublicKey = RSA.import_key(self.session_store[client_id].clientPubKey)
 
