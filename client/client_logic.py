@@ -16,7 +16,8 @@ class ClientLogic:
         self.address = address
         self.userName = ''
         self.userPassword = ''
-        self.SequenceId = 0
+        self.sequenceId = 0
+        self.currentDirectory =''
 
         # Generating RSA keys
         client_key = RSA.generate(2048)
@@ -48,8 +49,8 @@ class ClientLogic:
 
     
     def addSequenceId(self):
-        self.SequenceId += 1
-        return self.SequenceId
+        self.sequenceId += 1
+        return self.sequenceId
 
     
     def SignMessage(self, message) -> bytes:
@@ -70,23 +71,18 @@ class ClientLogic:
         hashedMessage = SHA256.new(msg_data_bytes)
         verifier = DSS.new(self.server_curve_key, 'fips-186-3')
 
-        msg_obj = json.loads(msg_data_bytes.decode("utf-8"))
-
-        validity = False
         try:
             verifier.verify(hashedMessage, signature)
 
-            validity = True
+            return True
 
         except ValueError:
             print("The message's signature is not valid.")
-            validity = False
-
-        return validity, msg_obj
+            return False
 
 
     def VerifyServerSequenceId(self, messageServerSequenceId):
-        if messageServerSequenceId == self.SequenceId:
+        if messageServerSequenceId == self.sequenceId:
             return True
         else: 
             print("The sequence id is invalid")
@@ -98,7 +94,7 @@ class ClientLogic:
         serverTime = datetime.fromtimestamp(messageServerTimestamp)
         if currentTime > serverTime:
             deltaTime = currentTime - serverTime
-            if deltaTime.total_seconds() < 60:
+            if deltaTime.total_seconds() < 5:
                 return True
             else:
                 print('The server timestamp is invalid')
@@ -107,8 +103,43 @@ class ClientLogic:
             print('The server timestamp is invalid')
             return False
 
+    
+    def VerifyMessage(self, signature, msg_data_bytes):
 
-    def ResolveServerMessage(self, networkInterface):
+        messageObject = json.loads(msg_data_bytes.decode("utf-8"))
+
+        signatureValidity = self.VerifyServerSignature(signature, msg_data_bytes)
+
+        if "type" in messageObject:
+            self.sequenceId += 1
+            messageServerSequenceId = messageObject["seq_id"]
+            sequenceValidity = self.VerifyServerSequenceId(messageServerSequenceId)
+            messageServerTimestamp = messageObject["timestamp"]
+            timestampValidity = self.VerifyServerTimestamp(messageServerTimestamp)
+        elif messageObject["response"] == 'ack':
+            sequenceValidity = True
+            timestampValidity = True
+        elif messageObject["response"] == 'Successful login!':
+            sequenceValidity = True
+            messageServerTimestamp = messageObject["timestamp"]
+            timestampValidity = self.VerifyServerTimestamp(messageServerTimestamp)
+        elif messageObject["response"] == 'User successfully created!':
+            sequenceValidity = True
+            timestampValidity = True
+        else:
+            sequenceValidity = False
+            timestampValidity = False
+    
+
+        if signatureValidity and sequenceValidity and timestampValidity:
+            print("The message is authentic.")
+            return True
+        else:
+            print("The message is not authentic.")
+            return False
+    
+
+    def DecodeMessage(self, networkInterface):
         status, incoming_byte_message = networkInterface.receive_msg(blocking=True)
         f = io.BytesIO(incoming_byte_message)
         encodedMessageKey, nonce, tag, ciphertext = \
@@ -121,26 +152,76 @@ class ClientLogic:
 
         f = io.BytesIO(byte_msg)
         signature, msg_data_bytes = [ f.read(x) for x in (64,-1) ]
+        return signature, msg_data_bytes
 
 
+    def ResolveServerMessage(self, networkInterface):
+        signature, msg_data_bytes = self.DecodeMessage(networkInterface)
 
-        validity, messageObject = self.VerifyServerSignature(signature, msg_data_bytes)
-        if "type" in messageObject:
-            self.SequenceId += 1
-            messageServerSequenceId = messageObject["seq_id"]
-            sequenceValidity = self.VerifyServerSequenceId(messageServerSequenceId)
-            messageServerTimestamp = messageObject["timestamp"]
-            timestampValidity = self.VerifyServerTimestamp(messageServerTimestamp)
-        else:
-            sequenceValidity = True
-            timestampValidity = True
-    
+        validity = self.VerifyMessage(signature, msg_data_bytes)    
 
-        if validity and sequenceValidity and timestampValidity:
-            print("The message is authentic.")
-        else:
-            print("The message is not authentic.")
+        if not validity:
+            print("TODO BREAK")
+
+        messageObject = json.loads(msg_data_bytes.decode("utf-8"))
         print(json.dumps(messageObject, indent=2))
+
+        if 'type' in messageObject:
+
+            if messageObject['type'] == 'MKD':
+                if type(messageObject['response']) == str:
+                    print(messageObject['response'])
+                else:
+                    error = messageObject['response']['error']
+                    print(error)
+            elif messageObject['type'] == 'RMD':
+                if type(messageObject['response']) == str:
+                    print(messageObject['response'])
+                else:
+                    error = messageObject['response']['error']
+                    print(error)
+            elif messageObject['type'] == 'CWD':
+                if type(messageObject['response']) == str:
+                    self.currentDirectory = messageObject['response']
+                else:
+                    error = messageObject['response']['error']
+                    print(error)
+            elif messageObject['type'] == 'UPL':
+                if type(messageObject['response']) == str:
+                    print("TODO UPL response")
+                    print(messageObject['response'])
+                else:
+                    error = messageObject['response']['error']
+                    print(error)
+            elif messageObject['type'] == 'DNL':
+                if type(messageObject['response']) == str:
+                    print("TODO DNL response")
+                    print(messageObject['response'])
+                else:
+                    error = messageObject['response']['error']
+                    print(error)
+            elif messageObject['type'] == 'LST':
+                if type(messageObject['response']) == str:
+                    print("TODO list response")
+                    print(messageObject['response'])
+                else:
+                    error = messageObject['response']['error']
+                    print(error)
+            elif messageObject['type'] == 'GWD':
+                if type(messageObject['response']) == str:
+                    self.currentDirectory = messageObject['response']
+                else:
+                    error = messageObject['response']['error']
+                    print(error)
+            elif messageObject['type'] == 'RMF':
+                if type(messageObject['response']) == str:
+                    print(messageObject['response'])
+                else:
+                    error = messageObject['response']['error']
+                    print(error)
+            elif messageObject['type'] == 'EXT':
+                print(messageObject['response'])
+            
 
 
     def CreateMessage(self, messageData):

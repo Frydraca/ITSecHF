@@ -105,32 +105,35 @@ print('Login')
 userNameLog, userPasswordLog = clientLogic.GetCredentials()
 netif.send_msg("A", clientLogic.SendLogInMessage())
 clientLogic.ResolveServerMessage(netif)
+netif.send_msg("A", clientLogic.SendGetWorkingDirectoryMessage())
+clientLogic.ResolveServerMessage(netif)
 
 while True:
-    netif.send_msg("A", clientLogic.SendGetWorkingDirectoryMessage())
-    clientLogic.ResolveServerMessage(netif)
-    userInput = input(">> ").split()
+
+    userInput = input(clientLogic.userName + \
+        ": " + clientLogic.currentDirectory + " >> ").split()
     if len(userInput) == 0:
         print("Error: No input was given.")
         continue
 
-    if userInput[0] == 'exit':
-        ExitInput(netif, clientLogic)
-        break
-    elif userInput[0] == 'mkdir':
+
+    if userInput[0] == 'mkdir':
         CreateDirectoryInput(netif, clientLogic, userInput)
     elif userInput[0] == 'rmd':
         RemoveDirectoryInput(netif, clientLogic, userInput)
     elif userInput[0] == 'cd':
         ChangingDirectoryInput(netif, clientLogic, userInput)
-    elif userInput[0] == 'ls':
-        ListDirectoryInput(netif, clientLogic)
     elif userInput[0] == 'upl':
         UploadFileInput(netif, clientLogic, userInput)
-    elif userInput [0] == 'dnl':
+    elif userInput[0] == 'dnl':
         DownloadFileInput(netif, clientLogic, userInput)
+    elif userInput[0] == 'ls':
+        ListDirectoryInput(netif, clientLogic)
     elif userInput[0] == 'rmf':
         RemoveFileInput(netif, clientLogic, userInput)
+    elif userInput[0] == 'exit':
+        ExitInput(netif, clientLogic)
+        break
     else:
         print("Invalid command")
     
