@@ -2,6 +2,7 @@ import getpass
 import json
 import io
 import uuid 
+import sys
 from Crypto.PublicKey import RSA, ECC
 from Crypto.Cipher import AES, PKCS1_OAEP
 from Crypto.Random import get_random_bytes
@@ -18,6 +19,10 @@ class ClientLogic:
         self.userPassword = ''
         self.sequenceId = 0
         self.currentDirectory =''
+
+        self.waitingForInitResponse = False
+        self.waitingForLoginResponse = False
+        self.waitingForRegResponse = False
 
         # Generating RSA keys
         client_key = RSA.generate(2048)
@@ -110,26 +115,11 @@ class ClientLogic:
 
         signatureValidity = self.VerifyServerSignature(signature, msg_data_bytes)
 
-        if "type" in messageObject:
-            self.sequenceId += 1
-            messageServerSequenceId = messageObject["seq_id"]
-            sequenceValidity = self.VerifyServerSequenceId(messageServerSequenceId)
-            messageServerTimestamp = messageObject["timestamp"]
-            timestampValidity = self.VerifyServerTimestamp(messageServerTimestamp)
-        elif messageObject["response"] == 'ack':
-            sequenceValidity = True
-            timestampValidity = True
-        elif messageObject["response"] == 'Successful login!':
-            sequenceValidity = True
-            messageServerTimestamp = messageObject["timestamp"]
-            timestampValidity = self.VerifyServerTimestamp(messageServerTimestamp)
-        elif messageObject["response"] == 'User successfully created!':
-            sequenceValidity = True
-            timestampValidity = True
-        else:
-            sequenceValidity = False
-            timestampValidity = False
-    
+        self.sequenceId += 1
+        messageServerSequenceId = messageObject["seq_id"]
+        sequenceValidity = self.VerifyServerSequenceId(messageServerSequenceId)
+        messageServerTimestamp = messageObject["timestamp"]
+        timestampValidity = self.VerifyServerTimestamp(messageServerTimestamp)    
 
         if signatureValidity and sequenceValidity and timestampValidity:
             print("The message is authentic.")
@@ -157,17 +147,16 @@ class ClientLogic:
 
     def ResolveServerMessage(self, networkInterface):
         signature, msg_data_bytes = self.DecodeMessage(networkInterface)
+        messageObject = json.loads(msg_data_bytes.decode("utf-8"))
+
+        print(json.dumps(messageObject, indent=2))
 
         validity = self.VerifyMessage(signature, msg_data_bytes)    
 
         if not validity:
             print("TODO BREAK")
 
-        messageObject = json.loads(msg_data_bytes.decode("utf-8"))
-        print(json.dumps(messageObject, indent=2))
-
         if 'type' in messageObject:
-
             if messageObject['type'] == 'MKD':
                 if type(messageObject['response']) == str:
                     print(messageObject['response'])
@@ -221,9 +210,64 @@ class ClientLogic:
                     print(error)
             elif messageObject['type'] == 'EXT':
                 print(messageObject['response'])
-            
 
 
+    def ResolveInitServerMessage(self, networkInterface):
+        signature, msg_data_bytes = self.DecodeMessage(networkInterface)
+
+        signatureValidity = self.VerifyServerSignature(signature, msg_data_bytes)
+
+        if signatureValidity:
+            messageObject = json.loads(msg_data_bytes.decode("utf-8"))
+            if messageObject['response'] == 'ack':
+                print("Connection successfully initialized with server.")
+            else:
+                print("Couldn't create connection with server, exiting from client.")
+                sys.exit()
+        else:
+            print("Couldn't create connection with server, exiting from client.")
+            sys.exit()
+
+    
+    def ResolveLoginServerMessage(self, networkInterface):
+        signature, msg_data_bytes = self.DecodeMessage(networkInterface)
+
+        signatureValidity = self.VerifyServerSignature(signature, msg_data_bytes)
+
+        
+        if signatureValidity:
+            messageObject = json.loads(msg_data_bytes.decode("utf-8"))
+            messageServerTimestamp = messageObject["timestamp"]
+            timestampValidity = self.VerifyServerTimestamp(messageServerTimestamp)
+            if timestampValidity:
+                if type(messageObject['response']) == str:
+                    if messageObject['response'] == 'Successfull login!':
+                        print(messageObject['response'])
+                        return True
+                else:
+                    error = messageObject['response']['error']
+                    print(error)
+        
+        print("Login was not successful, exiting client")
+        sys.exit()
+
+    
+    def ResolveRegServerMessage(self, networkInterface):
+        signature, msg_data_bytes = self.DecodeMessage(networkInterface)
+
+        signatureValidity = self.VerifyServerSignature(signature, msg_data_bytes)
+        
+        if signatureValidity:
+            messageObject = json.loads(msg_data_bytes.decode("utf-8"))
+            if type(messageObject['response']) == str:
+                print(messageObject['response'])
+            else:
+                error = messageObject['response']['error']
+                print(error)
+        else:
+            print("Registration was not successful, exiting client")
+
+    
     def CreateMessage(self, messageData):
         messageToEncode = {
             "client_id": self.clientId.int,

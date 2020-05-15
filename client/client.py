@@ -91,31 +91,29 @@ clientLogic = ClientLogic(clientAddress)
 netif = network_interface("../netsim/", clientAddress)
 
 netif.send_msg("A", clientLogic.SendInitMessage())
-clientLogic.ResolveServerMessage(netif)
+clientLogic.ResolveInitServerMessage(netif)
 
 for opt, arg in opts:
     if opt in ('-r', '--registrate'):
         print('Registration')
         clientLogic.GetCredentials()
         netif.send_msg("A", clientLogic.SendRegistrationMessage())
-        clientLogic.ResolveServerMessage(netif)
+        clientLogic.ResolveRegServerMessage(netif)
         sys.exit()
 
 print('Login')
 userNameLog, userPasswordLog = clientLogic.GetCredentials()
 netif.send_msg("A", clientLogic.SendLogInMessage())
-clientLogic.ResolveServerMessage(netif)
+clientLogic.ResolveLoginServerMessage(netif)
 netif.send_msg("A", clientLogic.SendGetWorkingDirectoryMessage())
 clientLogic.ResolveServerMessage(netif)
 
 while True:
-
     userInput = input(clientLogic.userName + \
         ": " + clientLogic.currentDirectory + " >> ").split()
     if len(userInput) == 0:
         print("Error: No input was given.")
         continue
-
 
     if userInput[0] == 'mkdir':
         CreateDirectoryInput(netif, clientLogic, userInput)
