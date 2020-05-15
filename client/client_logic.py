@@ -16,8 +16,7 @@ class ClientLogic:
         self.address = address
         self.userName = ''
         self.userPassword = ''
-        self.clientSequenceId = 0
-        self.serverSequenceId = 0
+        self.SequenceId = 0
 
         # Generating RSA keys
         client_key = RSA.generate(2048)
@@ -49,8 +48,8 @@ class ClientLogic:
 
     
     def addSequenceId(self):
-        self.clientSequenceId += 1
-        return self.clientSequenceId
+        self.SequenceId += 1
+        return self.SequenceId
 
     
     def SignMessage(self, message) -> bytes:
@@ -87,10 +86,25 @@ class ClientLogic:
 
 
     def VerifyServerSequenceId(self, messageServerSequenceId):
-        if messageServerSequenceId == self.serverSequenceId:
+        if messageServerSequenceId == self.SequenceId:
             return True
         else: 
             print("The sequence id is invalid")
+            return False
+
+    
+    def VerifyServerTimestamp(self, messageServerTimestamp):
+        currentTime = datetime.now()
+        serverTime = datetime.fromtimestamp(messageServerTimestamp)
+        if currentTime > serverTime:
+            deltaTime = currentTime - serverTime
+            if deltaTime.total_seconds() < 60:
+                return True
+            else:
+                print('The server timestamp is invalid')
+                return False
+        else:
+            print('The server timestamp is invalid')
             return False
 
 
@@ -112,14 +126,17 @@ class ClientLogic:
 
         validity, messageObject = self.VerifyServerSignature(signature, msg_data_bytes)
         if "type" in messageObject:
-            self.serverSequenceId += 1
+            self.SequenceId += 1
             messageServerSequenceId = messageObject["seq_id"]
             sequenceValidity = self.VerifyServerSequenceId(messageServerSequenceId)
+            messageServerTimestamp = messageObject["timestamp"]
+            timestampValidity = self.VerifyServerTimestamp(messageServerTimestamp)
         else:
             sequenceValidity = True
+            timestampValidity = True
     
 
-        if validity and sequenceValidity:
+        if validity and sequenceValidity and timestampValidity:
             print("The message is authentic.")
         else:
             print("The message is not authentic.")

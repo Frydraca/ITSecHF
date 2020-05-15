@@ -91,8 +91,6 @@ clientLogic = ClientLogic(clientAddress)
 netif = network_interface("../netsim/", clientAddress)
 
 netif.send_msg("A", clientLogic.SendInitMessage())
-
-
 clientLogic.ResolveServerMessage(netif)
 
 for opt, arg in opts:
