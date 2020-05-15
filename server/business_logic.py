@@ -7,6 +7,7 @@ from Crypto.PublicKey import RSA, ECC
 from Crypto.Signature import DSS
 from Crypto.Protocol.KDF import PBKDF2
 from datetime import datetime
+import shutil
 import os
 
 class BLL:
@@ -28,6 +29,19 @@ class BLL:
         now = datetime.now()
         return datetime.timestamp(now)
 
+
+    def concat_and_normalize_path(self, added_path):
+        rootPath = "users/{}".format(self.session_store[self.logged_in_session].user)
+        actPath = rootPath + self.session_store[self.logged_in_session].path
+        newPath = actPath + added_path
+        return os.path.normpath(newPath)
+
+
+    def create_cmd_response(self,msg_obj,response):
+        return {"type": msg_obj["data"]["type"], \
+                "seq_id": self.session_store[self.logged_in_session].seq_id,\
+                "timestamp": self.create_timestamp(), \
+                "response": response}
 
     def encrypt_users(self):
         data = json.dumps(self.users).encode('utf-8')
@@ -98,8 +112,29 @@ class BLL:
                "password" in msg_obj["data"].keys()
 
 
+    def validate_timestamp(self, data: dict) -> bool:
+        if "timestamp" in data.keys():
+            serverTime = datetime.now()
+            clientTime = datetime.fromtimestamp(data["timestamp"])
+            return serverTime > clientTime and \
+                   (serverTime - clientTime).total_seconds() < 5
+        else:
+            return False
+
+
+    def validate_and_update_seq(self, data: dict) -> bool:
+        if "seq_id" in data.keys() and \
+            data["seq_id"] == self.session_store[self.logged_in_session].seq_id + 1:
+            self.session_store[self.logged_in_session].seq_id = data["seq_id"] + 1
+            return True
+        else:
+            return False 
+
+
     def validate_command(self, msg_obj: dict) -> bool:
-        return self.logged_in_session == msg_obj["client_id"]
+        return self.validate_timestamp(msg_obj["data"]) and \
+               self.logged_in_session == msg_obj["client_id"] and \
+               self.validate_and_update_seq(msg_obj["data"])
 
 
     def validate_signature(self, client_id: str, byte_msg: bytes, signature: bytes) -> bool:
@@ -135,36 +170,48 @@ class BLL:
                             del self.session_store[msg_obj["client_id"]] 
                             return response
                         else:
-                            response = self.encode_message({"response": "Cannot create user!"}, msg_obj["client_id"])
+                            response = self.encode_message({"response": { "error" : "Cannot create user!"}}, msg_obj["client_id"])
                             del self.session_store[msg_obj["client_id"]]
                             return response
 
                     elif msg_obj["data"]["type"] == "LIN":
                         if self.validate_user(msg_obj) and \
                                 msg_obj["data"]["username"] in self.users.keys() and \
+                                self.validate_timestamp(msg_obj["data"]) and \
                                 self.logged_in_session == None:
                             return self.LIN(msg_obj)
                         else:
+                            print("Error 1")
                             return self.encode_message({"timestamp": self.create_timestamp(), \
-                                        "response": "Failed login!"}, msg_obj["client_id"])
+                                        "response": { "error" : "Failed login!"}}, msg_obj["client_id"])
                             
                     elif msg_obj["data"]["type"] == "MKD":
-                        return self.encode_message({"response": "NOT IMPLEMENTED!"}, msg_obj["client_id"])
+                        if self.validate_command(msg_obj):
+                            return self.MKD(msg_obj)
+
                     elif msg_obj["data"]["type"] == "RMD":
-                        return self.encode_message({"response": "NOT IMPLEMENTED!"}, msg_obj["client_id"])
+                        if self.validate_command(msg_obj):
+                            return self.RMD(msg_obj)
+
                     elif msg_obj["data"]["type"] == "CWD":
-                        return self.encode_message({"response": "NOT IMPLEMENTED!"}, msg_obj["client_id"])
+                        if self.validate_command(msg_obj):
+                            return self.CWD(msg_obj)
+
                     elif msg_obj["data"]["type"] == "UPL":
                         return self.encode_message({"response": "NOT IMPLEMENTED!"}, msg_obj["client_id"])
                     elif msg_obj["data"]["type"] == "DNL":
                         return self.encode_message({"response": "NOT IMPLEMENTED!"}, msg_obj["client_id"])
+                    
                     elif msg_obj["data"]["type"] == "LST":
-                        return self.encode_message({"response": "NOT IMPLEMENTED!"}, msg_obj["client_id"])
+                        if self.validate_command(msg_obj):
+                            return self.LST(msg_obj)
+
                     elif msg_obj["data"]["type"] == "RMF":
                         return self.encode_message({"response": "NOT IMPLEMENTED!"}, msg_obj["client_id"])
                     elif msg_obj["data"]["type"] == "GWD":
                         if self.validate_command(msg_obj):
                             return self.GWD(msg_obj)
+                            
                     elif msg_obj["data"]["type"] == "EXT":
                         if self.validate_command(msg_obj):
                             return self.EXT(msg_obj)
@@ -172,7 +219,7 @@ class BLL:
 
             if msg_obj["client_id"] in self.session_store.keys():
                 #Error handling
-                return self.encode_message({"response": "Server side error"}, msg_obj["client_id"])
+                return self.encode_message({"response": { "error" : "Server side error" } }, msg_obj["client_id"])
             
 
         return b"Fundamentaly Bad Message!"
@@ -213,37 +260,96 @@ class BLL:
             self.logged_in_session = msg_obj["client_id"]
 
             return self.encode_message({"timestamp": self.create_timestamp(), \
-                                        "response": "Successfull login!"}, msg_obj["client_id"])
+                                        "response": "Successful login!"}, msg_obj["client_id"])
         else:
+            print("Error 2")
             return self.encode_message({"timestamp": self.create_timestamp(), \
                                         "response": "Failed login!"}, msg_obj["client_id"])
 
 
+    def MKD(self, msg_obj: dict) -> bytes:
+        rootPath = os.path.normpath("users/{}".format(self.session_store[self.logged_in_session].user))
+        newPath = self.concat_and_normalize_path(msg_obj["data"]["dir_name"])
+        try:
+            if newPath.find(rootPath) != 0:
+                raise Exception()
+            
+            os.makedirs(newPath)
+            return self.encode_message( \
+                self.create_cmd_response(msg_obj,"Directory successfully created"), \
+                msg_obj["client_id"])
+        except:
+            return self.encode_message( \
+                self.create_cmd_response(msg_obj,{ "error" : "Cannot create directory!"}), \
+                msg_obj["client_id"])
+
+
+    def RMD(self, msg_obj: dict) -> bytes:
+        actPath = os.path.normpath("users/{}".format(self.session_store[self.logged_in_session].user + \
+            self.session_store[self.logged_in_session].path))
+        newPath = self.concat_and_normalize_path(msg_obj["data"]["dir_name"])
+        try:
+            print(actPath)
+            print(newPath)
+            if newPath.find(actPath) != 0 or newPath == actPath or not os.path.isdir(newPath):
+                raise Exception()
+            
+            shutil.rmtree(newPath)
+            return self.encode_message( \
+                self.create_cmd_response(msg_obj, "Successfully deleted!"), \
+                msg_obj["client_id"])
+        except:
+            return self.encode_message( \
+                self.create_cmd_response(msg_obj, { "error" : "You cannot delete this directory!"}), \
+                msg_obj["client_id"])
+                
+
+    def CWD(self, msg_obj: dict) -> bytes:
+        rootPath = os.path.normpath("users/{}".format(self.session_store[self.logged_in_session].user))
+        newPath = self.concat_and_normalize_path(msg_obj["data"]["path"])
+        try:
+            if newPath.find(rootPath) != 0 or not os.path.isdir(newPath):
+                raise Exception()
+            
+            self.session_store[self.logged_in_session].path = newPath[len(rootPath):].replace("\\","/") + '/'
+
+            return self.encode_message( \
+                self.create_cmd_response(msg_obj, self.session_store[self.logged_in_session].path), \
+                msg_obj["client_id"])
+        except:
+            return self.encode_message( \
+                self.create_cmd_response(msg_obj, { "error" : "You cannot change your directory to that!"}), \
+                msg_obj["client_id"])
+
+
+    def LST(self, msg_obj: dict) -> bytes:
+        actPath = os.path.normpath("users/{}".format(self.session_store[self.logged_in_session].user + \
+            self.session_store[self.logged_in_session].path))
+        
+        content = os.listdir(actPath)
+        print(content)
+
+        return self.encode_message( \
+                self.create_cmd_response(msg_obj, content), \
+                msg_obj["client_id"])
+
     def GWD(self, msg_obj: dict) -> bytes:
         if os.path.isdir("./users/{}".format(self.session_store[self.logged_in_session].user)):
             self.session_store[self.logged_in_session].path = "/"
-            return self.encode_message({"type": msg_obj["data"]["type"], \
-                                        "seq_id": 1,\
-                                        "timestamp": self.create_timestamp(), \
-                                        "response": self.session_store[self.logged_in_session].path}, \
-                                        msg_obj["client_id"])
+            return self.encode_message( \
+                self.create_cmd_response(msg_obj, self.session_store[self.logged_in_session].path), \
+                msg_obj["client_id"])
         else:
             self.EXT(msg_obj)
-            return self.encode_message({"type": msg_obj["data"]["type"], \
-                                        "seq_id": 1,\
-                                        "timestamp": self.create_timestamp(), \
-                                        "response": { "error" : "No directory for the user!"}
-                                        }, \
-                                        msg_obj["client_id"])
+            return self.encode_message( \
+                self.create_cmd_response(msg_obj, { "error" : "No directory for the user!"}), \
+                msg_obj["client_id"])
 
 
     def EXT(self, msg_obj: dict) -> bytes:
-        response = self.encode_message({"type": msg_obj["data"]["type"], \
-                                        "seq_id": 1,\
-                                        "timestamp": self.create_timestamp(), \
-                                        "response": "Logged out!"
-                                        }, \
-                                        msg_obj["client_id"])
+        response = self.encode_message( \
+            self.create_cmd_response(msg_obj, "Logged out!"), \
+            msg_obj["client_id"])
         del self.session_store[self.logged_in_session]
         self.logged_in_session = ''
         return response

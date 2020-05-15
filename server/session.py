@@ -6,3 +6,4 @@ class Session:
         self.user = ""
         self.password = ""
         self.path = ""
+        self.seq_id= 0
