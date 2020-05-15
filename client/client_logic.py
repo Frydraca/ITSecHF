@@ -7,19 +7,23 @@ from Crypto.Cipher import AES, PKCS1_OAEP
 from Crypto.Random import get_random_bytes
 from Crypto.Hash import SHA256
 from Crypto.Signature import DSS
+from datetime import datetime
 
 
 class ClientLogic:
     def __init__(self, address):
         self.clientId = uuid.uuid1()
+        self.address = address
+        self.userName = ''
+        self.userPassword = ''
+        self.clientSequenceId = 0
+        self.serverSequenceId = 0
 
         # Generating RSA keys
         client_key = RSA.generate(2048)
         self.client_key_private = client_key.export_key()
         self.client_key_public = client_key.publickey().export_key().decode('utf-8')
         self.client_private_cipher_rsa = PKCS1_OAEP.new(RSA.import_key(self.client_key_private))
-        
-        self.address = address
 
         # Generating signing key
         curveKey = ECC.generate(curve='P-256')
@@ -27,9 +31,7 @@ class ClientLogic:
         self.client_curve_key_private = curveKey.export_key(format='PEM')
         self.client_curve_key_public = curveKey.public_key().export_key(format='PEM')
 
-        self.userName = ''
-        self.userPassword = ''
-
+        # Load server public keys
         serverPublicKey = RSA.import_key(open("public_server_rsa_key.pem").read())
         self.server_cipher_rsa = PKCS1_OAEP.new(serverPublicKey)
         self.server_curve_key = ECC.import_key(open('public_server_curve_key.pem').read())
@@ -41,13 +43,16 @@ class ClientLogic:
         return self.userName, self.userPassword
 
 
-    def GenerateRsaKeys(self):
-        client_key = RSA.generate(2048)
-        self.client_key_private = client_key.export_key()
-        self.client_key_public = client_key.publickey().export_key().decode('utf-8')
-        self.client_private_cipher_rsa = PKCS1_OAEP.new(RSA.import_key(self.client_key_private))
-        
+    def create_timestamp(self):
+        now = datetime.now()
+        return datetime.timestamp(now)
 
+    
+    def addSequenceId(self):
+        self.clientSequenceId += 1
+        return self.clientSequenceId
+
+    
     def SignMessage(self, message) -> bytes:
         hashed_message = SHA256.new(message)
         signature = self.signer.sign(hashed_message)
@@ -68,12 +73,25 @@ class ClientLogic:
 
         msg_obj = json.loads(msg_data_bytes.decode("utf-8"))
 
+        validity = False
         try:
             verifier.verify(hashedMessage, signature)
-            print("The message is authentic.")
-            print(json.dumps(msg_obj, indent=2))
+
+            validity = True
+
         except ValueError:
-            print("The message is not authentic.")
+            print("The message's signature is not valid.")
+            validity = False
+
+        return validity, msg_obj
+
+
+    def VerifyServerSequenceId(self, messageServerSequenceId):
+        if messageServerSequenceId == self.serverSequenceId:
+            return True
+        else: 
+            print("The sequence id is invalid")
+            return False
 
 
     def ResolveServerMessage(self, networkInterface):
@@ -90,7 +108,22 @@ class ClientLogic:
         f = io.BytesIO(byte_msg)
         signature, msg_data_bytes = [ f.read(x) for x in (64,-1) ]
 
-        self.VerifyServerSignature(signature, msg_data_bytes)
+
+
+        validity, messageObject = self.VerifyServerSignature(signature, msg_data_bytes)
+        if "type" in messageObject:
+            self.serverSequenceId += 1
+            messageServerSequenceId = messageObject["seq_id"]
+            sequenceValidity = self.VerifyServerSequenceId(messageServerSequenceId)
+        else:
+            sequenceValidity = True
+    
+
+        if validity and sequenceValidity:
+            print("The message is authentic.")
+        else:
+            print("The message is not authentic.")
+        print(json.dumps(messageObject, indent=2))
 
 
     def CreateMessage(self, messageData):
@@ -128,7 +161,8 @@ class ClientLogic:
         messageData = {
             "type": "LIN",
             "username": self.userName,
-            "password": self.userPassword
+            "password": self.userPassword,
+            "timestamp": self.create_timestamp()
         }
 
         messageBytes = self.CreateMessage(messageData)
@@ -151,64 +185,86 @@ class ClientLogic:
 
 
     def SendExitMessage(self):
-        messageData = {
-            "type": "EXT"
+        messageData = { 
+            "type": "EXT",
+            "timestamp": self.create_timestamp(),
+            "seq_id": self.addSequenceId()
         }
         return self.CreateMessage(messageData)
     
 
-    def SendCreateDirectoryMessage(self):
+    def SendCreateDirectoryMessage(self, directoryName):
         messageData = {
-            "type": "MKD"
+            "type": "MKD",
+            "dir_name": directoryName,
+            "timestamp": self.create_timestamp(),
+            "seq_id": self.addSequenceId()
         }
         return self.CreateMessage(messageData)
 
     
-    def SendRemoveDirectoryMessage(self):
+    def SendRemoveDirectoryMessage(self, directoryName):
         messageData = {
-            "type": "RMD"
+            "type": "RMD",
+            "dir_name": directoryName,
+            "timestamp": self.create_timestamp(),
+            "seq_id": self.addSequenceId()
         }
         return self.CreateMessage(messageData)
 
 
-    def SendChangeDirectoryMessage(self):
+    def SendChangeDirectoryMessage(self, path):
         messageData = {
-            "type": "CWD"
+            "type": "CWD",
+            "path": path,
+            "timestamp": self.create_timestamp(),
+            "seq_id": self.addSequenceId()
         }
         return self.CreateMessage(messageData)
 
     
     def SendUploadFileMessage(self):
         messageData = {
-            "type": "UPL"
+            "type": "UPL",
+            "timestamp": self.create_timestamp(),
+            "seq_id": self.addSequenceId()
         }
         return self.CreateMessage(messageData)
         
     
     def SendDownloadFileMessage(self):
         messageData = {
-            "type": "DNL"
+            "type": "DNL",
+            "timestamp": self.create_timestamp(),
+            "seq_id": self.addSequenceId()
         }
         return self.CreateMessage(messageData)
         
     
     def SendListFilesMessage(self):
-        messageData = {
-            "type": "LST"
-        }
+        messageData = { 
+            "type": "LST",
+            "timestamp": self.create_timestamp(),
+            "seq_id": self.addSequenceId()
+            }
         return self.CreateMessage(messageData)
            
     
-    def SendRemoveFileMessage(self):
+    def SendRemoveFileMessage(self, fileName):
         messageData = {
-            "type": "RMF"
+            "type": "RMF",
+            "file_name": fileName,
+            "timestamp": self.create_timestamp(),
+            "seq_id": self.addSequenceId()
         }
         return self.CreateMessage(messageData)
 
     
     def SendGetWorkingDirectoryMessage(self):
         messageData = {
-            "type": "GWD"
+            "type": "GWD",
+            "timestamp": self.create_timestamp(),
+            "seq_id": self.addSequenceId()
         }
         return self.CreateMessage(messageData)
     
