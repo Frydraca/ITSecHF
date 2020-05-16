@@ -109,10 +109,11 @@ class ClientLogic:
 
     
     def VerifyMessage(self, signature, msg_data_bytes):
-
-        messageObject = json.loads(msg_data_bytes.decode("utf-8"))
-
         signatureValidity = self.VerifyServerSignature(signature, msg_data_bytes)
+        return self.VerifyMessageOnlyJSON(signature, msg_data_bytes, signatureValidity)
+
+    def VerifyMessageOnlyJSON(self, signature, msg_data_bytes, signatureValidity):
+        messageObject = json.loads(msg_data_bytes.decode("utf-8"))
 
         self.sequenceId += 1
         messageServerSequenceId = messageObject["seq_id"]
@@ -305,7 +306,8 @@ class ClientLogic:
 
         print(json.dumps(messageObject, indent=2))
 
-        validity = self.VerifyMessage(signature, fileContent + msg_data_bytes)    
+        signatureValidity = self.VerifyServerSignature(signature, fileContent + msg_data_bytes)
+        validity = self.VerifyMessageOnlyJSON(signature, msg_data_bytes, signatureValidity)
 
         if not validity:
             return False
@@ -519,9 +521,10 @@ class ClientLogic:
 
 
     def DecryptFile(self, content):
-
+        f = io.BytesIO(content)
         salt, iv, ciphertext = \
-            [ content.read(x) for x in (16, 16, -1) ]
+            [ f.read(x) for x in (16, 16, -1) ]
+        f.close()
 
         cbc_key = PBKDF2(self.userPassword, salt, 16, count=100000, hmac_hash_module=SHA512)
 

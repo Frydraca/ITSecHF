@@ -45,7 +45,7 @@ while True:
 
         result = bll.resolve_message(byte_message_data, signature)
 
-        netif.send_msg(sender.decode("utf-8"),result)
+        [netif.send_msg(sender.decode("utf-8"),send_this) for send_this in result]
 
 
         

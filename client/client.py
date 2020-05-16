@@ -77,10 +77,10 @@ def DownloadFileInput(netif, clientLogic, userInput):
             netif.send_msg("A", clientLogic.SendDNL(userInput[1]))
             status, contentSize = clientLogic.ResolveDNLServerMessage(netif)
             if status:
-                success, plaintext = clientLogic.ResolveDownloadFileServerMessage(netif, userInput[2], contentSize)
+                success, plaintext = clientLogic.ResolveDownloadFileServerMessage(netif, contentSize)
                 if success:
-                    file_out = open(os.path.abspath(userInput[2]) + \
-                         os.path.basename(userInput[1]), "w")
+                    file_out = open(os.path.normpath(userInput[2] + "/" + \
+                         os.path.basename(userInput[1])), "w")
                     [ file_out.write(x) for x in (plaintext.decode('utf-8')) ]
                     file_out.close()
         else:
