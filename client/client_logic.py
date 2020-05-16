@@ -284,6 +284,60 @@ class ClientLogic:
         else:
             print("Registration was not successful, exiting client")
 
+
+    def ResolveDownloadFileServerMessage(self, networkInterface, contentSize):
+        status, incoming_byte_message = networkInterface.receive_msg(blocking=True)
+        f = io.BytesIO(incoming_byte_message)
+        encodedMessageKey, nonce, tag, ciphertext = \
+            [ f.read(x) for x in (256, 16, 16, -1) ]
+        
+        messageKey = self.client_private_cipher_rsa.decrypt(encodedMessageKey)
+
+        cipher_aes = AES.new(messageKey, AES.MODE_EAX, nonce)
+        byte_msg = cipher_aes.decrypt_and_verify(ciphertext, tag)
+        f.close()
+
+        f = io.BytesIO(byte_msg)
+        signature, fileContent, msg_data_bytes = [ f.read(x) for x in (64, contentSize, -1) ]
+        f.close()
+
+        messageObject = json.loads(msg_data_bytes.decode("utf-8"))
+
+        print(json.dumps(messageObject, indent=2))
+
+        validity = self.VerifyMessage(signature, fileContent + msg_data_bytes)    
+
+        if not validity:
+            return False
+
+        if type(messageObject['response']) == str:
+            return True, self.DecryptFile(fileContent)
+        else:
+            error = messageObject['response']['error']
+            print(error)
+            return False, ''
+
+
+    
+    def ResolveDNLServerMessage(self, networkInterface):
+        signature, msg_data_bytes = self.DecodeMessage(networkInterface)
+        messageObject = json.loads(msg_data_bytes.decode("utf-8"))
+
+        print(json.dumps(messageObject, indent=2))
+
+        validity = self.VerifyMessage(signature, msg_data_bytes)    
+
+        if not validity:
+            return False
+
+        if messageObject['type'] == 'DNL':
+            if type(messageObject['response']) == str:
+                return True, int(messageObject['response'])
+            else:
+                error = messageObject['response']['error']
+                print(error)
+                return False, 0
+
     
     def CreateMessage(self, messageData):
         messageToEncode = {
@@ -385,7 +439,7 @@ class ClientLogic:
     def SendUPL(self, filename, filesize):
         messageData = {
             "type": "UPL",
-            "filename" : filename,
+            "filename": filename,
             "upload_size": filesize,
             "timestamp": self.create_timestamp(),
             "seq_id": self.addSequenceId()
@@ -393,9 +447,10 @@ class ClientLogic:
         return self.CreateMessage(messageData)
         
     
-    def SendDNL(self):
+    def SendDNL(self, filename):
         messageData = {
             "type": "DNL",
+            "filename": filename,
             "timestamp": self.create_timestamp(),
             "seq_id": self.addSequenceId()
         }
@@ -463,23 +518,18 @@ class ClientLogic:
             return content, len(content)
 
 
-    def DecryptFile(self, filepath):
+    def DecryptFile(self, content):
 
-        with open(filepath, 'rb') as file:
-            
+        salt, iv, ciphertext = \
+            [ content.read(x) for x in (16, 16, -1) ]
 
-            salt, iv, ciphertext = \
-                [ file.read(x) for x in (16, 16, -1) ]
+        cbc_key = PBKDF2(self.userPassword, salt, 16, count=100000, hmac_hash_module=SHA512)
 
-            cbc_key = PBKDF2(self.userPassword, salt, 16, count=100000, hmac_hash_module=SHA512)
+        cipher = AES.new(cbc_key, AES.MODE_CBC, iv)
+        plaintext = unpad(cipher.decrypt(ciphertext), AES.block_size)
 
-            cipher = AES.new(cbc_key, AES.MODE_CBC, iv)
-            plaintext = unpad(cipher.decrypt(ciphertext), AES.block_size)
+        return plaintext
 
-            file_out = open("temp_decoded.txt", "w")
-
-            [ file_out.write(x) for x in (plaintext.decode('utf-8')) ]
-            file_out.close()
 
     
 

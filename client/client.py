@@ -71,11 +71,18 @@ def DownloadFileInput(netif, clientLogic, userInput):
     if len(userInput) < 3:
         print('Error: File name or path was not provided')
     else:
-        if os.path.exists(userInput[2]):
+        if os.path.isdir(userInput[2]):
             print('Downloading file: ' + userInput[1] 
             + " to directory: " + userInput[2])
-            netif.send_msg("A", clientLogic.SendDNL())
-            clientLogic.ResolveServerMessage(netif)
+            netif.send_msg("A", clientLogic.SendDNL(userInput[1]))
+            status, contentSize = clientLogic.ResolveDNLServerMessage(netif)
+            if status:
+                success, plaintext = clientLogic.ResolveDownloadFileServerMessage(netif, userInput[2], contentSize)
+                if success:
+                    file_out = open(os.path.abspath(userInput[2]) + \
+                         os.path.basename(userInput[1]), "w")
+                    [ file_out.write(x) for x in (plaintext.decode('utf-8')) ]
+                    file_out.close()
         else:
             print('Error: download target directory does not exists')
 
