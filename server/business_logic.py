@@ -9,6 +9,7 @@ from Crypto.Protocol.KDF import PBKDF2
 from datetime import datetime
 import shutil
 import os
+import io
 
 class BLL:
 
@@ -16,6 +17,7 @@ class BLL:
         self.signer = signer
         self.session_store = dict()
         self.logged_in_session = None
+        self.waiting_for_upload = None
 
         self.password = password
         self.users = dict()
@@ -43,12 +45,13 @@ class BLL:
                 "timestamp": self.create_timestamp(), \
                 "response": response}
 
+
     def encrypt_users(self):
         data = json.dumps(self.users).encode('utf-8')
         file_out = open("users.bin", "wb")
 
         salt = get_random_bytes(16)
-        key = PBKDF2(self.password, salt, 16, count=10000, hmac_hash_module=SHA256)
+        key = PBKDF2(self.password, salt, 16, count=100000, hmac_hash_module=SHA256)
 
         cipher_aes = AES.new(key, AES.MODE_EAX)
         ciphertext, tag = cipher_aes.encrypt_and_digest(data)
@@ -62,7 +65,7 @@ class BLL:
             
             salt, nonce, tag, ciphertext = \
                 [ file_in.read(x) for x in (16, 16, 16, -1) ]
-            key = PBKDF2(self.password, salt, 16, count=10000, hmac_hash_module=SHA256)
+            key = PBKDF2(self.password, salt, 16, count=100000, hmac_hash_module=SHA256)
 
             cipher_aes = AES.new(key, AES.MODE_EAX, nonce)
             users = cipher_aes.decrypt_and_verify(ciphertext, tag)
@@ -149,9 +152,24 @@ class BLL:
             return False
 
 
-    def resolve_message(self, byte_msg: bytes, signature: bytes) -> bytes:
+    def normal_msg_parse(self,byte_msg: bytes) -> dict:
         msg = byte_msg.decode('utf-8')
-        msg_obj = json.loads(msg)
+        return json.loads(msg)
+
+    def file_and_msg_parse(self,byte_msg: bytes) -> tuple:
+        f = io.BytesIO(byte_msg)
+        file, msg = \
+            [ f.read(x) for x in (self.waiting_for_upload["size"], -1) ]
+        f.close()
+        return file, self.normal_msg_parse(msg)
+
+    ################################# RESOLVES INCOMMING MESAGES ##################################
+    def resolve_message(self, byte_msg: bytes, signature: bytes) -> bytes:
+        if self.waiting_for_upload == None:
+            msg_obj = self.normal_msg_parse(byte_msg)
+        else:
+            file, msg_obj = self.file_and_msg_parse(byte_msg)
+
         if self.basic_validate_message(msg_obj):
             print()
             print("Incoming message:")
@@ -164,58 +182,67 @@ class BLL:
             elif "client_id" in msg_obj.keys() and \
                  msg_obj["client_id"] in self.session_store.keys() and \
                  self.validate_signature(msg_obj["client_id"], byte_msg, signature): 
-                    if msg_obj["data"]["type"] == "REG":
-                        if self.validate_user(msg_obj) and msg_obj["data"]["username"] not in self.users.keys():
-                            response = self.REG(msg_obj)
-                            del self.session_store[msg_obj["client_id"]] 
-                            return response
-                        else:
-                            response = self.encode_message({"response": { "error" : "Cannot create user!"}}, msg_obj["client_id"])
-                            del self.session_store[msg_obj["client_id"]]
-                            return response
+                    if self.waiting_for_upload == None:
+                        if msg_obj["data"]["type"] == "REG":
+                            if self.validate_user(msg_obj) and msg_obj["data"]["username"] not in self.users.keys():
+                                response = self.REG(msg_obj)
+                                del self.session_store[msg_obj["client_id"]] 
+                                return response
+                            else:
+                                response = self.encode_message({"response": { "error" : "Cannot create user!"}}, msg_obj["client_id"])
+                                del self.session_store[msg_obj["client_id"]]
+                                return response
 
-                    elif msg_obj["data"]["type"] == "LIN":
-                        if self.validate_user(msg_obj) and \
-                                msg_obj["data"]["username"] in self.users.keys() and \
-                                self.validate_timestamp(msg_obj["data"]) and \
-                                self.logged_in_session == None:
-                            return self.LIN(msg_obj)
-                        else:
-                            print("Error 1")
-                            return self.encode_message({"timestamp": self.create_timestamp(), \
-                                        "response": { "error" : "Failed login!"}}, msg_obj["client_id"])
-                            
-                    elif msg_obj["data"]["type"] == "MKD":
-                        if self.validate_command(msg_obj):
-                            return self.MKD(msg_obj)
+                        elif msg_obj["data"]["type"] == "LIN":
+                            if self.validate_user(msg_obj) and \
+                                    msg_obj["data"]["username"] in self.users.keys() and \
+                                    self.validate_timestamp(msg_obj["data"]) and \
+                                    self.logged_in_session == None:
+                                return self.LIN(msg_obj)
+                            else:
+                                return self.encode_message({"timestamp": self.create_timestamp(), \
+                                            "response": { "error" : "Failed login!"}}, msg_obj["client_id"])
+                                
+                        elif msg_obj["data"]["type"] == "MKD":
+                            if self.validate_command(msg_obj):
+                                return self.MKD(msg_obj)
 
-                    elif msg_obj["data"]["type"] == "RMD":
-                        if self.validate_command(msg_obj):
-                            return self.RMD(msg_obj)
+                        elif msg_obj["data"]["type"] == "RMD":
+                            if self.validate_command(msg_obj):
+                                return self.RMD(msg_obj)
 
-                    elif msg_obj["data"]["type"] == "CWD":
-                        if self.validate_command(msg_obj):
-                            return self.CWD(msg_obj)
+                        elif msg_obj["data"]["type"] == "CWD":
+                            if self.validate_command(msg_obj):
+                                return self.CWD(msg_obj)
 
-                    elif msg_obj["data"]["type"] == "UPL":
-                        return self.encode_message({"response": "NOT IMPLEMENTED!"}, msg_obj["client_id"])
-                    elif msg_obj["data"]["type"] == "DNL":
-                        return self.encode_message({"response": "NOT IMPLEMENTED!"}, msg_obj["client_id"])
-                    
-                    elif msg_obj["data"]["type"] == "LST":
-                        if self.validate_command(msg_obj):
-                            return self.LST(msg_obj)
+                        elif msg_obj["data"]["type"] == "UPL":
+                            if self.validate_command(msg_obj):
+                                return self.UPL(msg_obj)
 
-                    elif msg_obj["data"]["type"] == "RMF":
-                        return self.encode_message({"response": "NOT IMPLEMENTED!"}, msg_obj["client_id"])
-                    elif msg_obj["data"]["type"] == "GWD":
-                        if self.validate_command(msg_obj):
-                            return self.GWD(msg_obj)
-                            
-                    elif msg_obj["data"]["type"] == "EXT":
-                        if self.validate_command(msg_obj):
-                            return self.EXT(msg_obj)
-                
+                        elif msg_obj["data"]["type"] == "DNL":
+                            return self.encode_message({"response": "NOT IMPLEMENTED!"}, msg_obj["client_id"])
+                        
+                        elif msg_obj["data"]["type"] == "LST":
+                            if self.validate_command(msg_obj):
+                                return self.LST(msg_obj)
+
+                        elif msg_obj["data"]["type"] == "RMF":
+                            if self.validate_command(msg_obj):
+                                return self.RMF(msg_obj)
+
+                        elif msg_obj["data"]["type"] == "GWD":
+                            if self.validate_command(msg_obj):
+                                return self.GWD(msg_obj)
+                                
+                        elif msg_obj["data"]["type"] == "EXT":
+                            if self.validate_command(msg_obj):
+                                return self.EXT(msg_obj)
+                    else:
+                        if msg_obj["data"]["type"] == "SVU":
+                            if self.validate_command(msg_obj):
+                                response = self.SVU(msg_obj, file)
+                                return response
+                        self.waiting_for_upload = None
 
             if msg_obj["client_id"] in self.session_store.keys():
                 #Error handling
@@ -225,6 +252,7 @@ class BLL:
         return b"Fundamentaly Bad Message!"
 
 
+    ##################################### RESOLVE COMMANDS ########################################
     def INI(self, msg_obj: dict) -> bytes:
         newSession = Session()
         newSession.clientId = msg_obj["client_id"]
@@ -262,7 +290,6 @@ class BLL:
             return self.encode_message({"timestamp": self.create_timestamp(), \
                                         "response": "Successful login!"}, msg_obj["client_id"])
         else:
-            print("Error 2")
             return self.encode_message({"timestamp": self.create_timestamp(), \
                                         "response": "Failed login!"}, msg_obj["client_id"])
 
@@ -289,8 +316,6 @@ class BLL:
             self.session_store[self.logged_in_session].path))
         newPath = self.concat_and_normalize_path(msg_obj["data"]["dir_name"])
         try:
-            print(actPath)
-            print(newPath)
             if newPath.find(actPath) != 0 or newPath == actPath or not os.path.isdir(newPath):
                 raise Exception()
             
@@ -322,16 +347,61 @@ class BLL:
                 msg_obj["client_id"])
 
 
+    def UPL(self, msg_obj: dict) -> bytes:
+        print(os.path.basename(msg_obj["data"]["filename"]))
+        if os.path.basename(msg_obj["data"]["filename"]) == msg_obj["data"]["filename"]:
+            filePath = os.path.normpath("users/{}".format(self.session_store[self.logged_in_session].user + \
+                self.session_store[self.logged_in_session].path) + \
+                msg_obj["data"]["filename"] )
+            print(filePath)
+            self.waiting_for_upload = {"path" : filePath, "size" : int(msg_obj["data"]["upload_size"])}
+            return self.encode_message( \
+                self.create_cmd_response(msg_obj, "Ready for the upload!"), \
+                msg_obj["client_id"])
+        else:
+            return self.encode_message( \
+                self.create_cmd_response(msg_obj, {"error" : "Cannot upload with this file name!"}), \
+                msg_obj["client_id"])
+
+
+    def SVU(self, msg_obj: dict, file: bytes) -> bytes:
+        with open(self.waiting_for_upload["path"], "wb") as file_out:
+            file_out.write(file)
+        
+        self.waiting_for_upload = None
+        return self.encode_message( \
+                self.create_cmd_response(msg_obj, "File successfully saved!"), \
+                msg_obj["client_id"])
+
+
     def LST(self, msg_obj: dict) -> bytes:
         actPath = os.path.normpath("users/{}".format(self.session_store[self.logged_in_session].user + \
             self.session_store[self.logged_in_session].path))
         
         content = os.listdir(actPath)
-        print(content)
 
         return self.encode_message( \
                 self.create_cmd_response(msg_obj, content), \
                 msg_obj["client_id"])
+
+
+    def RMF(self, msg_obj: dict) -> bytes:
+        actPath = os.path.normpath("users/{}".format(self.session_store[self.logged_in_session].user + \
+            self.session_store[self.logged_in_session].path))
+        newPath = self.concat_and_normalize_path(msg_obj["data"]["filename"])
+        try:
+            if newPath.find(actPath) != 0 or newPath == actPath or not os.path.isfile(newPath):
+                raise Exception()
+            
+            os.remove(newPath)
+            return self.encode_message( \
+                self.create_cmd_response(msg_obj, "Successfully deleted!"), \
+                msg_obj["client_id"])
+        except:
+            return self.encode_message( \
+                self.create_cmd_response(msg_obj, { "error" : "You cannot delete this file!"}), \
+                msg_obj["client_id"])
+
 
     def GWD(self, msg_obj: dict) -> bytes:
         if os.path.isdir("./users/{}".format(self.session_store[self.logged_in_session].user)):
@@ -351,5 +421,6 @@ class BLL:
             self.create_cmd_response(msg_obj, "Logged out!"), \
             msg_obj["client_id"])
         del self.session_store[self.logged_in_session]
-        self.logged_in_session = ''
+        self.logged_in_session = None
+        self.waiting_for_upload = None
         return response

@@ -31,6 +31,7 @@ while True:
         f = io.BytesIO(incoming_byte_message)
         sender, enc_message_key, nonce, tag, ciphertext = \
             [ f.read(x) for x in (1 ,modulus_len, 16, 16, -1) ]
+        f.close()
 
         message_key = cipher_rsa.decrypt(enc_message_key)
 
@@ -40,6 +41,7 @@ while True:
         f = io.BytesIO(byte_msg)
         signature, byte_message_data = \
             [ f.read(x) for x in (64, -1) ]
+        f.close()
 
         result = bll.resolve_message(byte_message_data, signature)
 

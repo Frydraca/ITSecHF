@@ -74,7 +74,7 @@ def DownloadFileInput(netif, clientLogic, userInput):
         if os.path.exists(userInput[2]):
             print('Downloading file: ' + userInput[1] 
             + " to directory: " + userInput[2])
-            netif.send_msg("A", clientLogic.SendDownloadFileMessage())
+            netif.send_msg("A", clientLogic.SendDNL())
             clientLogic.ResolveServerMessage(netif)
         else:
             print('Error: download target directory does not exists')
@@ -85,7 +85,7 @@ def RemoveFileInput(netif, clientLogic, userInput):
         print('Error: File name was not provided')
     else:
         print('Deleting file: ' + userInput[1])
-        netif.send_msg("A", clientLogic.SendRemoveFileMessage(userInput[1]))
+        netif.send_msg("A", clientLogic.SendRMF(userInput[1]))
         clientLogic.ResolveServerMessage(netif)
 
 
