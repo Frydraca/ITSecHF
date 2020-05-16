@@ -6,8 +6,11 @@ import sys
 from Crypto.PublicKey import RSA, ECC
 from Crypto.Cipher import AES, PKCS1_OAEP
 from Crypto.Random import get_random_bytes
-from Crypto.Hash import SHA256
+from Crypto.Hash import SHA256, SHA512
 from Crypto.Signature import DSS
+from Crypto.Util.Padding import pad, unpad
+from Crypto.Protocol.KDF import PBKDF2
+from base64 import b64encode
 from datetime import datetime
 
 
@@ -19,10 +22,6 @@ class ClientLogic:
         self.userPassword = ''
         self.sequenceId = 0
         self.currentDirectory =''
-
-        self.waitingForInitResponse = False
-        self.waitingForLoginResponse = False
-        self.waitingForRegResponse = False
 
         # Generating RSA keys
         client_key = RSA.generate(2048)
@@ -154,7 +153,7 @@ class ClientLogic:
         validity = self.VerifyMessage(signature, msg_data_bytes)    
 
         if not validity:
-            print("TODO BREAK")
+            return False
 
         if 'type' in messageObject:
             if messageObject['type'] == 'MKD':
@@ -163,25 +162,28 @@ class ClientLogic:
                 else:
                     error = messageObject['response']['error']
                     print(error)
+                    return False
             elif messageObject['type'] == 'RMD':
                 if type(messageObject['response']) == str:
                     print(messageObject['response'])
                 else:
                     error = messageObject['response']['error']
                     print(error)
+                    return False
             elif messageObject['type'] == 'CWD':
                 if type(messageObject['response']) == str:
                     self.currentDirectory = messageObject['response']
                 else:
                     error = messageObject['response']['error']
                     print(error)
+                    return False
             elif messageObject['type'] == 'UPL':
                 if type(messageObject['response']) == str:
-                    print("TODO UPL response")
                     print(messageObject['response'])
                 else:
                     error = messageObject['response']['error']
                     print(error)
+                    return False
             elif messageObject['type'] == 'DNL':
                 if type(messageObject['response']) == str:
                     print("TODO DNL response")
@@ -189,28 +191,41 @@ class ClientLogic:
                 else:
                     error = messageObject['response']['error']
                     print(error)
+                    return False
             elif messageObject['type'] == 'LST':
-                if type(messageObject['response']) == str:
-                    print("TODO list response")
-                    print(messageObject['response'])
+                if type(messageObject['response']) == list:
+                    for element in messageObject['response']:
+                        print(element)
                 else:
                     error = messageObject['response']['error']
                     print(error)
+                    return False
             elif messageObject['type'] == 'GWD':
                 if type(messageObject['response']) == str:
                     self.currentDirectory = messageObject['response']
                 else:
                     error = messageObject['response']['error']
                     print(error)
+                    return False
             elif messageObject['type'] == 'RMF':
                 if type(messageObject['response']) == str:
                     print(messageObject['response'])
                 else:
                     error = messageObject['response']['error']
                     print(error)
+                    return False
+            elif messageObject['type'] == 'SVU':
+                if type(messageObject['response']) == str:
+                    print(messageObject['response'])
+                else:
+                    error = messageObject['response']['error']
+                    print(error)
+                    return False
             elif messageObject['type'] == 'EXT':
                 print(messageObject['response'])
-
+        
+        return True
+        
 
     def ResolveInitServerMessage(self, networkInterface):
         signature, msg_data_bytes = self.DecodeMessage(networkInterface)
@@ -241,9 +256,8 @@ class ClientLogic:
             timestampValidity = self.VerifyServerTimestamp(messageServerTimestamp)
             if timestampValidity:
                 if type(messageObject['response']) == str:
-                    if messageObject['response'] == 'Successfull login!':
-                        print(messageObject['response'])
-                        return True
+                    print(messageObject['response'])
+                    return True
                 else:
                     error = messageObject['response']['error']
                     print(error)
@@ -365,9 +379,10 @@ class ClientLogic:
         return self.CreateMessage(messageData)
 
     
-    def SendUploadFileMessage(self):
+    def SendUploadFileMessage(self, filename):
         messageData = {
             "type": "UPL",
+            "filename" : filename,
             "timestamp": self.create_timestamp(),
             "seq_id": self.addSequenceId()
         }
@@ -395,7 +410,7 @@ class ClientLogic:
     def SendRemoveFileMessage(self, fileName):
         messageData = {
             "type": "RMF",
-            "file_name": fileName,
+            "filename": fileName,
             "timestamp": self.create_timestamp(),
             "seq_id": self.addSequenceId()
         }
@@ -409,6 +424,51 @@ class ClientLogic:
             "seq_id": self.addSequenceId()
         }
         return self.CreateMessage(messageData)
+
+
+    def UploadFileMessage(self, filepath):
+        content = self.EncryptFile(filepath)
+        messageData = {
+            "type": "SVU",
+            "content": content,
+            "timestamp": self.create_timestamp(),
+            "seq_id": self.addSequenceId()
+        }
+        return self.CreateMessage(messageData)
+
+    
+    def EncryptFile(self, filepath):
+
+        salt = get_random_bytes(16)
+        cbc_key = PBKDF2(self.userPassword, salt, 16, count=100000, hmac_hash_module=SHA512)
+
+        with open(filepath, 'rb') as file:
+
+            fileData = file.read()
+            cipher = AES.new(cbc_key, AES.MODE_CBC)
+            ciphertext_bytes = cipher.encrypt(pad(fileData, AES.block_size))
+            iv = cipher.iv
+            return salt + iv + ciphertext_bytes
+
+
+    def DecryptFile(self, filepath):
+
+        with open(filepath, 'rb') as file:
+            
+
+            salt, iv, ciphertext = \
+                [ file.read(x) for x in (16, 16, -1) ]
+
+            cbc_key = PBKDF2(self.userPassword, salt, 16, count=100000, hmac_hash_module=SHA512)
+
+            cipher = AES.new(cbc_key, AES.MODE_CBC, iv)
+            plaintext = unpad(cipher.decrypt(ciphertext), AES.block_size)
+
+            file_out = open("temp_decoded.txt", "w")
+
+            [ file_out.write(x) for x in (plaintext.decode('utf-8')) ]
+            file_out.close()
+
     
 
 

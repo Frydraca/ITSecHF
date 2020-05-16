@@ -1,6 +1,7 @@
 import sys
 import json
 import getopt
+import os
 
 sys.path += ['..']
 
@@ -54,9 +55,14 @@ def UploadFileInput(netif, clientLogic, userInput):
     if len(userInput) < 2:
         print('Error: Path was not provided')
     else:
-        print("Uploading file: " + userInput[1])
-        netif.send_msg("A", clientLogic.SendUploadFileMessage())
-        clientLogic.ResolveServerMessage(netif)
+        if os.path.exists(userInput[1]):
+            print("Uploading file: " + userInput[1])
+            netif.send_msg("A", clientLogic.SendUploadFileMessage(os.path.basename(userInput[1])))
+            if clientLogic.ResolveServerMessage(netif):
+                netif.send_msg("A", clientLogic.UploadFileMessage(userInput[1]))
+                clientLogic.ResolveServerMessage(netif)
+        else:
+            print('Error: file does not exists')
 
 
 def DownloadFileInput(netif, clientLogic, userInput):
@@ -107,6 +113,9 @@ netif.send_msg("A", clientLogic.SendLogInMessage())
 clientLogic.ResolveLoginServerMessage(netif)
 netif.send_msg("A", clientLogic.SendGetWorkingDirectoryMessage())
 clientLogic.ResolveServerMessage(netif)
+
+# clientLogic.EncryptFile('test.txt')
+# clientLogic.DecryptFile('temp.bin')
 
 while True:
     userInput = input(clientLogic.userName + \
