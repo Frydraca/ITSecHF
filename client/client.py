@@ -14,7 +14,7 @@ from Crypto.Signature import DSS
 
 def ExitInput(netif, clientLogic):
     print('Logging out')
-    netif.send_msg("A", clientLogic.SendExitMessage())
+    netif.send_msg("A", clientLogic.SendEXT())
     clientLogic.ResolveServerMessage(netif)
 
 
@@ -23,7 +23,7 @@ def CreateDirectoryInput(netif, clientLogic, userInput):
         print('Error: Directory name was not provided')
     else:
         print('Creating a new directory: ' + userInput[1])
-        netif.send_msg("A", clientLogic.SendCreateDirectoryMessage(userInput[1]))
+        netif.send_msg("A", clientLogic.SendMKD(userInput[1]))
         clientLogic.ResolveServerMessage(netif)
 
 
@@ -32,7 +32,7 @@ def RemoveDirectoryInput(netif, clientLogic, userInput):
         print('Error: Directory name was not provided')
     else:
         print('Deleting directory: ' + userInput[1])
-        netif.send_msg("A", clientLogic.SendRemoveDirectoryMessage(userInput[1]))
+        netif.send_msg("A", clientLogic.SendRMD(userInput[1]))
         clientLogic.ResolveServerMessage(netif)
 
 
@@ -41,13 +41,13 @@ def ChangingDirectoryInput(netif, clientLogic, userInput):
         print('Error: Path was not provided')
     else:
         print('Changing directory to: ' + userInput[1])
-        netif.send_msg("A", clientLogic.SendChangeDirectoryMessage(userInput[1]))
+        netif.send_msg("A", clientLogic.SendCWD(userInput[1]))
         clientLogic.ResolveServerMessage(netif)
 
 
 def ListDirectoryInput(netif, clientLogic):
     print("Listing contents in the directory")
-    netif.send_msg("A", clientLogic.SendListFilesMessage())
+    netif.send_msg("A", clientLogic.SendLST())
     clientLogic.ResolveServerMessage(netif)
 
 
@@ -57,9 +57,11 @@ def UploadFileInput(netif, clientLogic, userInput):
     else:
         if os.path.exists(userInput[1]):
             print("Uploading file: " + userInput[1])
-            netif.send_msg("A", clientLogic.SendUploadFileMessage(os.path.basename(userInput[1])))
+            content, content_size = clientLogic.EncryptFile(userInput[1])
+            netif.send_msg("A", \
+                clientLogic.SendUPL(os.path.basename(userInput[1]), content_size))
             if clientLogic.ResolveServerMessage(netif):
-                netif.send_msg("A", clientLogic.UploadFileMessage(userInput[1]))
+                netif.send_msg("A", clientLogic.UploadFileMessage(content))
                 clientLogic.ResolveServerMessage(netif)
         else:
             print('Error: file does not exists')
@@ -69,10 +71,13 @@ def DownloadFileInput(netif, clientLogic, userInput):
     if len(userInput) < 3:
         print('Error: File name or path was not provided')
     else:
-        print('Downloading file: ' + userInput[1] 
-        + " to directory: " + userInput[2])
-        netif.send_msg("A", clientLogic.SendDownloadFileMessage())
-        clientLogic.ResolveServerMessage(netif)
+        if os.path.exists(userInput[2]):
+            print('Downloading file: ' + userInput[1] 
+            + " to directory: " + userInput[2])
+            netif.send_msg("A", clientLogic.SendDownloadFileMessage())
+            clientLogic.ResolveServerMessage(netif)
+        else:
+            print('Error: download target directory does not exists')
 
 
 def RemoveFileInput(netif, clientLogic, userInput):
@@ -96,22 +101,22 @@ clientAddress = "C"
 clientLogic = ClientLogic(clientAddress)
 netif = network_interface("../netsim/", clientAddress)
 
-netif.send_msg("A", clientLogic.SendInitMessage())
+netif.send_msg("A", clientLogic.SendINI())
 clientLogic.ResolveInitServerMessage(netif)
 
 for opt, arg in opts:
     if opt in ('-r', '--registrate'):
         print('Registration')
         clientLogic.GetCredentials()
-        netif.send_msg("A", clientLogic.SendRegistrationMessage())
+        netif.send_msg("A", clientLogic.SendREG())
         clientLogic.ResolveRegServerMessage(netif)
         sys.exit()
 
 print('Login')
 userNameLog, userPasswordLog = clientLogic.GetCredentials()
-netif.send_msg("A", clientLogic.SendLogInMessage())
+netif.send_msg("A", clientLogic.SendLIN())
 clientLogic.ResolveLoginServerMessage(netif)
-netif.send_msg("A", clientLogic.SendGetWorkingDirectoryMessage())
+netif.send_msg("A", clientLogic.SendGWD())
 clientLogic.ResolveServerMessage(netif)
 
 # clientLogic.EncryptFile('test.txt')

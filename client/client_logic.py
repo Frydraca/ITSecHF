@@ -138,9 +138,11 @@ class ClientLogic:
 
         cipher_aes = AES.new(messageKey, AES.MODE_EAX, nonce)
         byte_msg = cipher_aes.decrypt_and_verify(ciphertext, tag)
+        f.close()
 
         f = io.BytesIO(byte_msg)
         signature, msg_data_bytes = [ f.read(x) for x in (64,-1) ]
+        f.close()
         return signature, msg_data_bytes
 
 
@@ -234,10 +236,11 @@ class ClientLogic:
 
         if signatureValidity:
             messageObject = json.loads(msg_data_bytes.decode("utf-8"))
-            if messageObject['response'] == 'ack':
-                print("Connection successfully initialized with server.")
+            if type(messageObject['response']) == str:
+                print(messageObject['response'])
             else:
-                print("Couldn't create connection with server, exiting from client.")
+                error = messageObject['response']['error']
+                print(error)
                 sys.exit()
         else:
             print("Couldn't create connection with server, exiting from client.")
@@ -293,7 +296,7 @@ class ClientLogic:
         return self.EncodeMessageWithAes(messageWithSign)
 
 
-    def SendInitMessage(self) -> bytes:
+    def SendINI(self) -> bytes:
         messageData = {
             "type": "INI",
             "pub_key": self.client_key_public,
@@ -313,7 +316,7 @@ class ClientLogic:
         return messageBytes
 
 
-    def SendLogInMessage(self):
+    def SendLIN(self):
         messageData = {
             "type": "LIN",
             "username": self.userName,
@@ -327,7 +330,7 @@ class ClientLogic:
         return messageBytes
 
 
-    def SendRegistrationMessage(self):
+    def SendREG(self):
         messageData = {
             "type": "REG",
             "username": self.userName,
@@ -340,7 +343,7 @@ class ClientLogic:
         return messageBytes
 
 
-    def SendExitMessage(self):
+    def SendEXT(self):
         messageData = { 
             "type": "EXT",
             "timestamp": self.create_timestamp(),
@@ -349,7 +352,7 @@ class ClientLogic:
         return self.CreateMessage(messageData)
     
 
-    def SendCreateDirectoryMessage(self, directoryName):
+    def SendMKD(self, directoryName):
         messageData = {
             "type": "MKD",
             "dir_name": directoryName,
@@ -359,7 +362,7 @@ class ClientLogic:
         return self.CreateMessage(messageData)
 
     
-    def SendRemoveDirectoryMessage(self, directoryName):
+    def SendRMD(self, directoryName):
         messageData = {
             "type": "RMD",
             "dir_name": directoryName,
@@ -369,7 +372,7 @@ class ClientLogic:
         return self.CreateMessage(messageData)
 
 
-    def SendChangeDirectoryMessage(self, path):
+    def SendCWD(self, path):
         messageData = {
             "type": "CWD",
             "path": path,
@@ -379,17 +382,18 @@ class ClientLogic:
         return self.CreateMessage(messageData)
 
     
-    def SendUploadFileMessage(self, filename):
+    def SendUPL(self, filename, filesize):
         messageData = {
             "type": "UPL",
             "filename" : filename,
+            "upload_size": filesize,
             "timestamp": self.create_timestamp(),
             "seq_id": self.addSequenceId()
         }
         return self.CreateMessage(messageData)
         
     
-    def SendDownloadFileMessage(self):
+    def SendDNL(self):
         messageData = {
             "type": "DNL",
             "timestamp": self.create_timestamp(),
@@ -398,7 +402,7 @@ class ClientLogic:
         return self.CreateMessage(messageData)
         
     
-    def SendListFilesMessage(self):
+    def SendLST(self):
         messageData = { 
             "type": "LST",
             "timestamp": self.create_timestamp(),
@@ -407,7 +411,7 @@ class ClientLogic:
         return self.CreateMessage(messageData)
            
     
-    def SendRemoveFileMessage(self, fileName):
+    def SendRMF(self, fileName):
         messageData = {
             "type": "RMF",
             "filename": fileName,
@@ -417,7 +421,7 @@ class ClientLogic:
         return self.CreateMessage(messageData)
 
     
-    def SendGetWorkingDirectoryMessage(self):
+    def SendGWD(self):
         messageData = {
             "type": "GWD",
             "timestamp": self.create_timestamp(),
@@ -426,15 +430,22 @@ class ClientLogic:
         return self.CreateMessage(messageData)
 
 
-    def UploadFileMessage(self, filepath):
-        content = self.EncryptFile(filepath)
+    def UploadFileMessage(self, content):
         messageData = {
             "type": "SVU",
-            "content": content,
             "timestamp": self.create_timestamp(),
             "seq_id": self.addSequenceId()
         }
-        return self.CreateMessage(messageData)
+
+        messageToEncode = {
+            "client_id": self.clientId.int,
+            "data": messageData 
+        }
+        messageToEncodeBytes = json.dumps(messageToEncode).encode("utf-8")
+        messageWithSign = self.SignMessage(content + messageToEncodeBytes) + \
+                          content + messageToEncodeBytes
+
+        return self.EncodeMessageWithAes(messageWithSign)
 
     
     def EncryptFile(self, filepath):
@@ -448,7 +459,8 @@ class ClientLogic:
             cipher = AES.new(cbc_key, AES.MODE_CBC)
             ciphertext_bytes = cipher.encrypt(pad(fileData, AES.block_size))
             iv = cipher.iv
-            return salt + iv + ciphertext_bytes
+            content = salt + iv + ciphertext_bytes
+            return content, len(content)
 
 
     def DecryptFile(self, filepath):
