@@ -55,7 +55,7 @@ def UploadFileInput(netif, clientLogic, userInput):
     if len(userInput) < 2:
         print('Error: Path was not provided')
     else:
-        if os.path.exists(userInput[1]):
+        if os.path.isfile(userInput[1]):
             print("Uploading file: " + userInput[1])
             content, content_size = clientLogic.EncryptFile(userInput[1])
             netif.send_msg("A", \
