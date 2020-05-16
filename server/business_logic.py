@@ -348,7 +348,7 @@ class BLL:
                 
 
     def CWD(self, msg_obj: dict) -> bytes:
-        rootPath = os.path.normpath("users/{}".format(self.session_store[self.logged_in_session].user)) + "\\"
+        rootPath = os.path.normpath("users/{}".format(self.session_store[self.logged_in_session].user))
         newPath = self.concat_and_normalize_path(msg_obj["data"]["path"])
         try:
             if newPath.find(rootPath) != 0 or not os.path.isdir(newPath):
