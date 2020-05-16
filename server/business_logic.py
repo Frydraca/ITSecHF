@@ -212,8 +212,12 @@ class BLL:
                                     self.logged_in_session == None:
                                 return [self.LIN(msg_obj)]
                             else:
-                                return [self.encode_message_json({"timestamp": self.create_timestamp(), \
-                                            "response": { "error" : "Failed login!"}}, msg_obj["client_id"])]
+                                response = self.encode_message_json({"timestamp": self.create_timestamp(), \
+                                            "response": { "error" : "Failed login!"}}, msg_obj["client_id"])
+                                del self.session_store[msg_obj["client_id"]]
+                                self.logged_in_session = None
+                                self.waiting_for_upload = None
+                                return [response]
                                 
                         elif msg_obj["data"]["type"] == "MKD":
                             if self.validate_command(msg_obj):
@@ -308,8 +312,12 @@ class BLL:
             return self.encode_message_json({"timestamp": self.create_timestamp(), \
                                         "response": "Successful login!"}, msg_obj["client_id"])
         else:
-            return self.encode_message_json({"timestamp": self.create_timestamp(), \
-                                        "response": "Failed login!"}, msg_obj["client_id"])
+            response = self.encode_message_json({"timestamp": self.create_timestamp(), \
+                                        "response": { "error" : "Failed login!" }}, msg_obj["client_id"])
+            del self.session_store[msg_obj["client_id"]]
+            self.logged_in_session = None
+            self.waiting_for_upload = None
+            return response
 
 
     def MKD(self, msg_obj: dict) -> bytes:
@@ -348,13 +356,13 @@ class BLL:
                 
 
     def CWD(self, msg_obj: dict) -> bytes:
-        rootPath = os.path.normpath("users/{}".format(self.session_store[self.logged_in_session].user))
-        newPath = self.concat_and_normalize_path(msg_obj["data"]["path"])
+        rootPath = os.path.normpath("users/{}".format(self.session_store[self.logged_in_session].user)) + '\\'
+        newPath = self.concat_and_normalize_path(msg_obj["data"]["path"]) + '\\'
         try:
             if newPath.find(rootPath) != 0 or not os.path.isdir(newPath):
                 raise Exception()
             
-            self.session_store[self.logged_in_session].path = newPath[len(rootPath):].replace("\\","/") + '/'
+            self.session_store[self.logged_in_session].path = newPath[len(rootPath)-1:].replace("\\","/")
 
             return self.encode_message_json( \
                 self.create_cmd_response(msg_obj, self.session_store[self.logged_in_session].path), \
