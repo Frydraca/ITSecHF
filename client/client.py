@@ -130,6 +130,7 @@ clientLogic.ResolveServerMessage(netif)
 # clientLogic.DecryptFile('temp.bin')
 
 while True:
+    print()
     userInput = input(clientLogic.userName + \
         ": " + clientLogic.currentDirectory + " >> ").split()
     if len(userInput) == 0:

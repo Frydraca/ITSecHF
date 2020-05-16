@@ -77,7 +77,6 @@ class ClientLogic:
 
         try:
             verifier.verify(hashedMessage, signature)
-
             return True
 
         except ValueError:
@@ -112,6 +111,7 @@ class ClientLogic:
         signatureValidity = self.VerifyServerSignature(signature, msg_data_bytes)
         return self.VerifyMessageOnlyJSON(signature, msg_data_bytes, signatureValidity)
 
+
     def VerifyMessageOnlyJSON(self, signature, msg_data_bytes, signatureValidity):
         messageObject = json.loads(msg_data_bytes.decode("utf-8"))
 
@@ -122,7 +122,6 @@ class ClientLogic:
         timestampValidity = self.VerifyServerTimestamp(messageServerTimestamp)    
 
         if signatureValidity and sequenceValidity and timestampValidity:
-            print("The message is authentic.")
             return True
         else:
             print("The message is not authentic.")
@@ -150,8 +149,6 @@ class ClientLogic:
     def ResolveServerMessage(self, networkInterface):
         signature, msg_data_bytes = self.DecodeMessage(networkInterface)
         messageObject = json.loads(msg_data_bytes.decode("utf-8"))
-
-        print(json.dumps(messageObject, indent=2))
 
         validity = self.VerifyMessage(signature, msg_data_bytes)    
 
@@ -198,7 +195,7 @@ class ClientLogic:
             elif messageObject['type'] == 'LST':
                 if type(messageObject['response']) == list:
                     for element in messageObject['response']:
-                        print(element)
+                        print('\t' + str(element))
                 else:
                     error = messageObject['response']['error']
                     print(error)
@@ -252,7 +249,6 @@ class ClientLogic:
         signature, msg_data_bytes = self.DecodeMessage(networkInterface)
 
         signatureValidity = self.VerifyServerSignature(signature, msg_data_bytes)
-
         
         if signatureValidity:
             messageObject = json.loads(msg_data_bytes.decode("utf-8"))
@@ -304,8 +300,6 @@ class ClientLogic:
 
         messageObject = json.loads(msg_data_bytes.decode("utf-8"))
 
-        print(json.dumps(messageObject, indent=2))
-
         signatureValidity = self.VerifyServerSignature(signature, fileContent + msg_data_bytes)
         validity = self.VerifyMessageOnlyJSON(signature, msg_data_bytes, signatureValidity)
 
@@ -319,13 +313,10 @@ class ClientLogic:
             print(error)
             return False, ''
 
-
     
     def ResolveDNLServerMessage(self, networkInterface):
         signature, msg_data_bytes = self.DecodeMessage(networkInterface)
         messageObject = json.loads(msg_data_bytes.decode("utf-8"))
-
-        print(json.dumps(messageObject, indent=2))
 
         validity = self.VerifyMessage(signature, msg_data_bytes)    
 
@@ -368,7 +359,7 @@ class ClientLogic:
 
         messageBytes = self.EncodeMessageWithAes(messageWithSign)
 
-        print('sent init.')
+        print('Sent init.')
         return messageBytes
 
 
@@ -382,7 +373,7 @@ class ClientLogic:
 
         messageBytes = self.CreateMessage(messageData)
 
-        print('sent login.')
+        print('Sent login.')
         return messageBytes
 
 
@@ -395,7 +386,7 @@ class ClientLogic:
 
         messageBytes = self.CreateMessage(messageData)
         
-        print('sent registration.')
+        print('Sent registration.')
         return messageBytes
 
 
@@ -506,12 +497,10 @@ class ClientLogic:
 
     
     def EncryptFile(self, filepath):
-
         salt = get_random_bytes(16)
         cbc_key = PBKDF2(self.userPassword, salt, 16, count=100000, hmac_hash_module=SHA512)
 
         with open(filepath, 'rb') as file:
-
             fileData = file.read()
             cipher = AES.new(cbc_key, AES.MODE_CBC)
             ciphertext_bytes = cipher.encrypt(pad(fileData, AES.block_size))
@@ -527,7 +516,6 @@ class ClientLogic:
         f.close()
 
         cbc_key = PBKDF2(self.userPassword, salt, 16, count=100000, hmac_hash_module=SHA512)
-
         cipher = AES.new(cbc_key, AES.MODE_CBC, iv)
         plaintext = unpad(cipher.decrypt(ciphertext), AES.block_size)
 
